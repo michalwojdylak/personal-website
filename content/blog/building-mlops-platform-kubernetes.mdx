@@ -1,0 +1,82 @@
+---
+title: "Building an MLOps Platform on Kubernetes from Scratch"
+description: "The core building blocks of a production MLOps platform — model registry, CI/CD for models, and safe rollouts with canaries and shadow deployments."
+date: "2026-04-30"
+tags: ["MLOps", "Kubernetes", "Infrastructure"]
+published: true
+author: "Michał Wojdylak"
+---
+
+A good MLOps platform makes the right thing the easy thing: shipping a model
+should be as routine as shipping a web service. Here's how I structure one on
+Kubernetes.
+
+## The four pillars
+
+Every platform I've built comes down to four capabilities:
+
+1. **Model registry** — a single source of truth for model versions.
+2. **Reproducible packaging** — the same artifact runs everywhere.
+3. **CI/CD for models** — automated validation and rollout.
+4. **Safe deployment** — canaries, shadows, and instant rollback.
+
+## Reproducible packaging
+
+Bake the model, runtime, and dependencies into a single immutable image. No
+"works on my machine," ever.
+
+```dockerfile
+FROM nvcr.io/nvidia/pytorch:24.05-py3
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY serve.py model/ ./
+ENTRYPOINT ["python", "serve.py"]
+```
+
+## CI/CD for models
+
+A model pipeline should run on every registry promotion:
+
+```yaml
+# .github/workflows/deploy-model.yml
+name: deploy-model
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        required: true
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run offline evaluation
+        run: python eval/run.py --version ${{ inputs.model_version }}
+      - name: Canary rollout
+        run: helm upgrade model ./chart --set canary.weight=10
+```
+
+## Safe rollouts
+
+Never flip 100% of traffic to a new model. Two patterns I rely on:
+
+- **Canary** — route a small slice of live traffic, watch the metrics, then ramp.
+- **Shadow** — mirror real requests to the new model without serving its
+  responses, so you can compare quality offline.
+
+> Treat every model deployment as a hypothesis. Canaries and shadows are how you
+> test it before betting production traffic on it.
+
+## Observability closes the loop
+
+Track model-level metrics (latency, error rate, prediction distribution) right
+next to infrastructure metrics. Drift in the prediction distribution is often
+the first sign something's wrong upstream.
+
+## Where to start
+
+Don't build all four pillars at once. Start with reproducible packaging and a
+registry — that alone removes most of the pain. Layer on CI/CD and safe rollouts
+as your deployment frequency grows.
+

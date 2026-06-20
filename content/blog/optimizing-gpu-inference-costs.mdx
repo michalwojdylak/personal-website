@@ -1,0 +1,66 @@
+---
+title: "Cutting GPU Inference Costs Without Hurting Latency"
+description: "Quantization, batching, and right-sizing strategies that reduced our inference bill by 60% while keeping p99 latency flat."
+date: "2026-05-22"
+tags: ["Inference", "Optimization", "Cost"]
+published: true
+author: "Michał Wojdylak"
+---
+
+GPU bills have a way of growing quietly until someone in finance asks a pointed
+question. Here's how I approach inference cost optimization without trading away
+the latency that users care about.
+
+## Start by measuring, not guessing
+
+Before changing anything, attribute cost to workloads. You can't optimize what
+you can't see.
+
+```bash
+# Per-model GPU utilization via DCGM exporter + Prometheus
+sum by (model) (rate(dcgm_gpu_utilization[5m]))
+```
+
+If a model averages 15% GPU utilization, you don't have a cost problem — you
+have a **packing** problem.
+
+## Quantization: the highest-leverage lever
+
+Moving from FP16 to INT8 or FP8 roughly halves memory footprint and increases
+throughput, often with negligible quality loss for many workloads.
+
+```python
+# Example: load an AWQ-quantized model with vLLM
+from vllm import LLM
+
+llm = LLM(
+    model="TheBloke/Llama-3.1-8B-Instruct-AWQ",
+    quantization="awq",
+    gpu_memory_utilization=0.9,
+)
+```
+
+Always validate quality on **your** eval set before shipping. Benchmarks lie;
+your task is the only ground truth.
+
+## Right-size the hardware
+
+The biggest, newest GPU is rarely the most cost-effective. For an 8B model:
+
+- An A10G may deliver better **tokens-per-dollar** than an A100.
+- Tensor parallelism across cheaper GPUs can beat one expensive card.
+
+## Pack more model into each GPU
+
+- **Continuous batching** keeps the GPU busy.
+- **Multi-LoRA serving** lets one base model serve many fine-tunes.
+- **KV cache management** (paged attention) reclaims wasted memory.
+
+## The results
+
+On a recent platform, combining FP8 quantization, right-sized A10G nodes, and
+continuous batching cut the monthly bill by **~60%** while keeping p99 latency
+within noise. None of these are exotic — they're disciplined defaults.
+
+The lesson: cost optimization is mostly removing waste, not clever tricks.
+

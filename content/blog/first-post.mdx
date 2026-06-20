@@ -1,0 +1,74 @@
+---
+title: "Deploying LLMs in Production: An Infrastructure Playbook"
+description: "A practical walkthrough of the infrastructure decisions behind serving large language models reliably — from GPU selection to batching, autoscaling, and observability."
+date: "2026-06-10"
+tags: ["LLM", "Infrastructure", "Inference"]
+published: true
+author: "Michał Wojdylak"
+---
+
+Serving a large language model in a notebook is easy. Serving it to thousands of
+concurrent users with predictable latency and a sane cloud bill is a different
+problem entirely. This post is the playbook I wish I'd had when I started
+building inference platforms.
+
+## Choosing the right serving engine
+
+The serving engine is the single most important decision you'll make. It
+determines your throughput ceiling, your memory efficiency, and how much
+operational complexity you sign up for.
+
+- **vLLM** — excellent throughput thanks to PagedAttention and continuous
+  batching. A great default for open-weight models.
+- **TGI** (Text Generation Inference) — production-hardened, good ecosystem
+  integration.
+- **Triton Inference Server** — maximum flexibility when you need to serve
+  mixed workloads (LLMs alongside vision or embedding models).
+
+```python
+from vllm import LLM, SamplingParams
+
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", tensor_parallel_size=2)
+params = SamplingParams(temperature=0.7, max_tokens=512)
+
+outputs = llm.generate(["Explain KV caching in one paragraph."], params)
+print(outputs[0].outputs[0].text)
+```
+
+## Continuous batching is non-negotiable
+
+Naive request-per-forward-pass serving wastes most of your GPU. Continuous
+batching interleaves requests at the token level, keeping the GPU saturated even
+when individual requests finish at different times. This single technique often
+delivers a **3–5x throughput improvement** with no model changes.
+
+> The goal is simple: never let an expensive GPU sit idle waiting for a slow
+> request to finish.
+
+## Autoscaling on GPUs
+
+GPU autoscaling is harder than CPU autoscaling because cold starts are measured
+in minutes, not milliseconds. A few rules that have served me well:
+
+1. Scale on **queue depth and time-to-first-token**, not CPU.
+2. Keep a small **warm pool** to absorb traffic spikes.
+3. Use **node pools** with cluster autoscaler so you only pay for GPUs you use.
+
+## Observability that matters
+
+For inference workloads, track these as first-class metrics:
+
+| Metric | Why it matters |
+| --- | --- |
+| Time to first token | The number users actually feel |
+| Tokens per second | Throughput per replica |
+| GPU utilization | Are you wasting expensive hardware? |
+| Queue depth | Your leading indicator for scaling |
+
+## Wrapping up
+
+Production LLM serving is a systems problem, not a model problem. Get the
+serving engine, batching, autoscaling, and observability right, and everything
+else becomes tractable. In future posts I'll dig deeper into quantization and
+multi-model routing.
+
