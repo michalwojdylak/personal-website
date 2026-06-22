@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { siteConfig } from "@/lib/site-config";
 import { getFeaturedPosts } from "@/lib/posts";
-import { getFeaturedProjects } from "@/lib/projects";
 import { SocialLinks } from "@/components/social-links";
 import { BlogCard } from "@/components/blog-card";
-import { ProjectCard } from "@/components/project-card";
 
 export default function HomePage() {
   const posts = getFeaturedPosts(3);
-  const projects = getFeaturedProjects(3);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
@@ -59,26 +56,6 @@ export default function HomePage() {
             No posts yet — check back soon.
           </p>
         )}
-      </section>
-
-      {/* Featured projects */}
-      <section className="mt-16">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">
-            Featured projects
-          </h2>
-          <Link
-            href="/projects"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            All projects →
-          </Link>
-        </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {projects.map((project) => (
-            <ProjectCard key={project.title} project={project} />
-          ))}
-        </div>
       </section>
     </div>
   );
