@@ -13,10 +13,9 @@ export const siteConfig = {
     "Building production AI systems, LLM infrastructure, inference platforms and cloud-native ML solutions.",
   url: "https://michalwojdylak.com",
   locale: "en_US",
-  email: "hello@michalwojdylak.com",
+  email: "wojdylak.michal@gmail.com",
   author: {
     name: "Michał Wojdylak",
-    twitter: "@michalwojdylak",
   },
   links: {
     github: "https://github.com/michalwojdylak",

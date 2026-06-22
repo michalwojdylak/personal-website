@@ -48,7 +48,6 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteConfig.title,
     description: siteConfig.description,
-    creator: siteConfig.author.twitter,
   },
   alternates: {
     canonical: siteConfig.url,
