@@ -12,6 +12,8 @@ export interface PostFrontmatter {
   tags: string[];
   published?: boolean;
   author?: string;
+  heroImage?: string;
+  repo?: string;
 }
 
 export interface PostMeta extends PostFrontmatter {
@@ -51,6 +53,8 @@ export function getPostBySlug(slug: string): Post | null {
     tags: frontmatter.tags ?? [],
     published: frontmatter.published ?? true,
     author: frontmatter.author,
+    heroImage: frontmatter.heroImage,
+    repo: frontmatter.repo,
     readingTime: stats.text,
     readingMinutes: Math.max(1, Math.round(stats.minutes)),
     content,
