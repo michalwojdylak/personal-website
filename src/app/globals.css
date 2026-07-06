@@ -94,6 +94,10 @@
 }
 
 /* Shiki dual-theme: swap colors based on the active theme. */
+html:not(.dark) [data-rehype-pretty-code-figure] span[data-line] span {
+  color: var(--shiki-light) !important;
+}
+
 html.dark [data-rehype-pretty-code-figure] span[data-line] span {
   color: var(--shiki-dark) !important;
 }

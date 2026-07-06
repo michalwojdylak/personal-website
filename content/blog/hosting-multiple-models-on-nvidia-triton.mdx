@@ -34,7 +34,7 @@ The major cloud platforms differ in how they interface with Triton's native APIs
 | **VRAM Reclamation** | Automatic Least Recently Used (LRU) model eviction | Manual configuration only (no runtime eviction) | Manual configuration only (no runtime eviction) |
 | **Model Updates** | S3 Upload (no endpoint redeployment needed) | Full endpoint redeployment required | Full endpoint redeployment required |
 | **Triton Image** | Pre-built wrapped `sagemaker-tritonserver` | Custom push of standard `tritonserver` to Artifact Registry | Custom push of standard `tritonserver` to Azure Container Registry |
-| **Directory Format** | Flat structure; one `tar.gz` archive per model; folder version `1` only | Standard multi-version structure (`1/`, `2/`, etc.) | Standard multi-version structure (`1/`, `2/`, etc.) |
+| **Directory Format** | Flat structure; one tar.gz archive per model; folder version 1 only | Standard multi-version structure (1/, 2/, etc.) | Standard multi-version structure (1/, 2/, etc.) |
 | **Deploy Pre-requisites** | No models required during endpoint creation | Models must be present during upload and deploy | Models must be present during upload and deploy |
 | **Complexity Level** | Moderate (governed by SageMaker MME SDK rules) | Low (simple, direct container parameters) | High (requires custom routing and container overrides) |
 

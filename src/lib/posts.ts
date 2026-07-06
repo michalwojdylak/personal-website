@@ -115,14 +115,20 @@ export function getTableOfContents(content: string): TocItem[] {
   const headingRegex = /^(#{2,3})\s+(.*)$/gm;
   const items: TocItem[] = [];
   let match: RegExpExecArray | null;
+  const idCounts = new Map<string, number>();
 
   while ((match = headingRegex.exec(content)) !== null) {
     const level = match[1].length;
     const text = match[2].replace(/[`*_]/g, "").trim();
-    const id = text
+    const baseId = text
       .toLowerCase()
       .replace(/[^\w\s-]/g, "")
       .replace(/\s+/g, "-");
+    
+    const count = idCounts.get(baseId) ?? 0;
+    idCounts.set(baseId, count + 1);
+    
+    const id = count > 0 ? `${baseId}-${count}` : baseId;
     items.push({ id, text, level });
   }
 
