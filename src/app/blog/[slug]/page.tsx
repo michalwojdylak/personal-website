@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -12,6 +13,7 @@ import { formatDate } from "@/lib/utils";
 import { Mdx } from "@/components/mdx";
 import { Tag } from "@/components/tag";
 import { TableOfContents } from "@/components/table-of-contents";
+import { GitHubIcon } from "@/components/social-links";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -114,6 +116,19 @@ export default async function BlogPostPage({ params }: PageProps) {
             )}
           </header>
 
+          {post.heroImage && (
+            <div className="mt-8">
+              <Image
+                src={post.heroImage}
+                alt={post.title}
+                width={800}
+                height={400}
+                className="w-full rounded-lg object-cover"
+                priority
+              />
+            </div>
+          )}
+
           <div className="prose prose-neutral mt-8 dark:prose-invert">
             <Mdx source={post.content} />
           </div>
@@ -151,9 +166,25 @@ export default async function BlogPostPage({ params }: PageProps) {
           )}
         </article>
 
-        {/* Table of contents (desktop sidebar) */}
+        {/* Sidebar */}
         <aside className="hidden lg:block">
-          <div className="sticky top-24">
+          <div className="sticky top-24 space-y-8">
+            {post.repo && (
+              <div>
+                <h4 className="text-sm font-semibold tracking-tight">
+                  Code Repository
+                </h4>
+                <a
+                  href={post.repo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-accent/50 hover:text-foreground"
+                >
+                  <GitHubIcon className="h-4 w-4" />
+                  View on GitHub
+                </a>
+              </div>
+            )}
             <TableOfContents items={toc} />
           </div>
         </aside>
