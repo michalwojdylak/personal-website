@@ -32,7 +32,11 @@ export async function generateMetadata({
   if (!post) return {};
 
   const url = `${siteConfig.url}/blog/${post.slug}`;
-  const ogImage = `/api/og?title=${encodeURIComponent(post.title)}`;
+  const ogImageParams = new URLSearchParams({ title: post.title });
+  if (post.heroImage) {
+    ogImageParams.set("heroImage", `${siteConfig.url}${post.heroImage}`);
+  }
+  const ogImage = `/api/og?${ogImageParams.toString()}`;
 
   return {
     title: post.title,
