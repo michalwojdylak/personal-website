@@ -62,27 +62,34 @@
 }
 
 /* Syntax highlighting (rehype-pretty-code + Shiki dual themes). */
-[data-rehype-pretty-code-figure] pre {
+/* Block code is wrapped in a <figure>; inline code is wrapped in a <span> —
+   scope block-only rules to figure so inline code stays inline. */
+figure[data-rehype-pretty-code-figure] pre {
   @apply overflow-x-auto rounded-lg border bg-muted/40 py-4 text-sm leading-relaxed;
 }
 
-[data-rehype-pretty-code-figure] code {
+figure[data-rehype-pretty-code-figure] code {
   @apply grid;
   counter-reset: line;
 }
 
-[data-rehype-pretty-code-figure] code[data-line-numbers] > [data-line]::before {
+figure[data-rehype-pretty-code-figure] code[data-line-numbers] > [data-line]::before {
   counter-increment: line;
   content: counter(line);
   @apply mr-4 inline-block w-4 text-right text-muted-foreground/50;
 }
 
-[data-rehype-pretty-code-figure] [data-line] {
+figure[data-rehype-pretty-code-figure] [data-line] {
   @apply border-l-2 border-transparent px-4;
 }
 
-[data-rehype-pretty-code-figure] [data-highlighted-line] {
+figure[data-rehype-pretty-code-figure] [data-highlighted-line] {
   @apply border-accent bg-accent/10;
+}
+
+/* Inline code (single backtick) rendered by rehype-pretty-code. */
+span[data-rehype-pretty-code-figure] code {
+  @apply rounded border border-border bg-muted/50 px-1.5 py-0.5;
 }
 
 [data-rehype-pretty-code-title] {

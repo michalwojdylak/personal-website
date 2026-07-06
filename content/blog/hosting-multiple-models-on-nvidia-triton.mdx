@@ -5,7 +5,7 @@ date: 2025-07-06
 tags: ["triton", "gpu", "aws", "azure", "gcp", "mlops", "inference", "multi-model"]
 published: true
 author: "Michał Wojdylak"
-heroImage: "/images/blog/triton.png"
+heroImage: "/images/blog/hosting-multiple-models-on-nvidia-triton/hero.png"
 repo: "https://github.com/michalwojdylak/hosting-multiple-models-on-nvidia-triton"
 ---
 
@@ -34,7 +34,7 @@ The major cloud platforms differ in how they interface with Triton's native APIs
 | **VRAM Reclamation** | Automatic Least Recently Used (LRU) model eviction | Manual configuration only (no runtime eviction) | Manual configuration only (no runtime eviction) |
 | **Model Updates** | S3 Upload (no endpoint redeployment needed) | Full endpoint redeployment required | Full endpoint redeployment required |
 | **Triton Image** | Pre-built wrapped `sagemaker-tritonserver` | Custom push of standard `tritonserver` to Artifact Registry | Custom push of standard `tritonserver` to Azure Container Registry |
-| **Directory Format** | Flat structure; one tar.gz archive per model; folder version 1 only | Standard multi-version structure (1/, 2/, etc.) | Standard multi-version structure (1/, 2/, etc.) |
+| **Directory Format** | Flat structure; one `tar.gz` archive per model; folder version `1` only | Standard multi-version structure (`1/`, `2/`, etc.) | Standard multi-version structure (`1/`, `2/`, etc.) |
 | **Deploy Pre-requisites** | No models required during endpoint creation | Models must be present during upload and deploy | Models must be present during upload and deploy |
 | **Complexity Level** | Moderate (governed by SageMaker MME SDK rules) | Low (simple, direct container parameters) | High (requires custom routing and container overrides) |
 
@@ -177,26 +177,7 @@ SageMaker Multi-Model Endpoints work **fundamentally differently** from Azure an
 
 ### SageMaker Multi-Model Request Pipeline
 
-```
-                     Inference Request
-                     | (Includes TargetModel header)
-                     v
-           SageMaker Endpoint Router
-                     |
-     +---------------+---------------+
-     v                               v
- Is Model Loaded?             Is Model Loaded?
- (Yes: Route)                 (No: S3 Pull)
-     |                               |
-     v                               v
- Execute Inference      Download .tar.gz from S3
-                                     |
-                                     v
-                            Extract to NVMe
-                                     |
-                                     v
-                           Load to GPU VRAM
-```
+![SageMaker multi-model request pipeline](/images/blog/hosting-multiple-models-on-nvidia-triton/graph.png)
 
 If GPU memory is full, an **automatic LRU policy** unloads inactive models. This enables thousands of models on a single GPU, at the cost of cold-start latency on first invocation. SageMaker wraps Triton with `sagemaker-tritonserver`, which prevents direct access to native Triton APIs and restricts archives to a single version folder `1`.
 
