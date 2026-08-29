@@ -123,7 +123,7 @@ export function getTableOfContents(content: string): TocItem[] {
     const baseId = text
       .toLowerCase()
       .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-");
+      .replace(/ /g, "-");
     
     const count = idCounts.get(baseId) ?? 0;
     idCounts.set(baseId, count + 1);
