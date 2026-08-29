@@ -11,7 +11,7 @@ repo: "https://github.com/michalwojdylak/llm-inference-benchmarks"
 
 # LLM Inference Benchmarks: vLLM vs SGLang vs TensorRT-LLM on a Single L40S
 
-Choosing an inference engine for large language model serving is a decision with direct impact on latency, throughput, and infrastructure cost. This post presents a **head-to-head benchmark** of three production-grade engines — **vLLM**, **SGLang**, and **TensorRT-LLM** — across four real-world workload scenarios on a single NVIDIA L40S GPU. I specifically chose the L40S because it is a practical, mid-range GPU that is less commonly featured in benchmarks — most published comparisons default to the H100, which may not reflect the hardware teams are actually deploying on. All benchmarks use [AIPerf](https://github.com/nvidia/aiperf) for reproducible, standardized measurement.
+Choosing an inference engine for large language model serving is a decision with direct impact on latency, throughput, and infrastructure cost. This post presents a **head-to-head benchmark** of three production-grade engines — **vLLM**, **SGLang**, and **TensorRT-LLM** — across four real-world workload scenarios on a single NVIDIA L40S GPU. I specifically chose the L40S because it is a practical, mid-range GPU that is less commonly featured in benchmarks — most published comparisons default to the H100, which may not reflect the hardware teams are actually deploying on. All benchmarks use Nvidia AIPerf for reproducible, standardized measurement.
 
 ---
 
