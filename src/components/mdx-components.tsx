@@ -8,6 +8,11 @@ import { Pre } from "@/components/copy-button";
  * Passed to next-mdx-remote's <MDXRemote /> renderer.
  */
 export const mdxComponents: MDXComponents = {
+  table: ({ children, ...props }) => (
+    <div className="overflow-x-auto">
+      <table {...props}>{children}</table>
+    </div>
+  ),
   a: ({ href = "", children, ...props }) => {
     const isInternal = href.startsWith("/") || href.startsWith("#");
     if (isInternal) {
@@ -29,7 +34,7 @@ export const mdxComponents: MDXComponents = {
       src={src as string}
       alt={alt}
       loading="lazy"
-      className="rounded-lg border border-border"
+      className="w-full rounded-lg border border-border"
       {...props}
     />
   ),
