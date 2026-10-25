@@ -1,6 +1,6 @@
 ---
 title: "Hosting Multiple Models on NVIDIA Triton Server Across AWS, Azure, and GCP"
-description: "By consolidating multiple ML models onto a single GPU instance using NVIDIA Triton Inference Server, engineering teams can achieve up to a 90% reduction in cloud infrastructure costs while maintaining sub-millisecond latencies."
+description: "Consolidating compatible ML models onto shared GPU infrastructure with NVIDIA Triton Inference Server cuts idle capacity and serving costs. A comparison of the multi-model deployment patterns on AWS, Azure and GCP."
 date: 2025-07-06
 tags: ["model-serving", "cost-optimization", "triton", "aws", "azure", "gcp"]
 published: true
@@ -11,7 +11,9 @@ repo: "https://github.com/michalwojdylak/hosting-multiple-models-on-nvidia-trito
 
 # Reducing GPU Serving Costs: Hosting Multiple Models on NVIDIA Triton Server Across AWS, Azure, and GCP
 
-By consolidating multiple machine learning models onto a single GPU instance using NVIDIA Triton Inference Server, engineering teams can achieve up to a **90% reduction** in cloud infrastructure costs while maintaining sub-millisecond latencies. This guide demonstrates how to configure, deploy, and manage a multi-model Triton environment across Amazon Web Services (AWS), Google Cloud Platform (GCP), and Microsoft Azure. The accompanying repository contains three production-ready notebooks that provide complete, end-to-end code templates to accelerate this deployment.
+Consolidating compatible machine learning models onto shared GPU infrastructure with NVIDIA Triton Inference Server reduces idle capacity and serving costs, but each cloud platform handles model loading, updates and memory management differently. This guide demonstrates how to configure, deploy, and manage a multi-model Triton environment across Amazon Web Services (AWS), Google Cloud Platform (GCP), and Microsoft Azure. The accompanying repository contains three end-to-end deployment notebooks that document the workflows and the platform-specific limitations encountered during implementation.
+
+How much you actually save depends on model sizes, concurrency, utilisation, replica counts, cold starts and latency targets. The numbers below are not a cost benchmark; they are an architectural comparison of what each platform makes easy and what it makes painful.
 
 ---
 
@@ -19,7 +21,9 @@ By consolidating multiple machine learning models onto a single GPU instance usi
 
 When serving multiple deep learning models in production, allocating a dedicated GPU instance to each model often results in **low utilization and high cloud expenditures**. Standardizing on Triton Inference Server allows a single GPU instance to execute concurrent model inference across different frameworks like PyTorch, ONNX, and TensorRT.
 
-However, AWS, GCP, and Azure implement multi-model Triton serving through vastly different architectural mechanisms. This analysis compares these platform configurations, highlights critical pitfalls identified during testing, and details how to execute these deployments.
+Triton itself offers three model-control modes: `NONE` (load everything at startup), `EXPLICIT` (load and unload through the model-control API) and `POLL` (watch the repository for changes, which NVIDIA does not recommend for production because an update can be observed half-applied). The deployments here use startup loading on GCP and Azure, and leave dynamic loading to SageMaker's own adapter on AWS - so platform behaviour below describes that pattern, not every possible Triton configuration.
+
+AWS, GCP, and Azure implement multi-model Triton serving through vastly different architectural mechanisms. This analysis compares these platform configurations, highlights critical pitfalls identified during testing, and details how to execute these deployments.
 
 ---
 
@@ -32,7 +36,7 @@ The major cloud platforms differ in how they interface with Triton's native APIs
 | **Endpoint Service** | Multi-Model Endpoint (MME) | Custom Container Endpoint | Managed Online Endpoint |
 | **Model Allocation** | Dynamic, on-demand loading from Amazon S3 | Static, loaded at startup from Google Cloud Storage | Static, mounted at startup from Azure ML model assets |
 | **VRAM Reclamation** | Automatic Least Recently Used (LRU) model eviction | Manual configuration only (no runtime eviction) | Manual configuration only (no runtime eviction) |
-| **Model Updates** | S3 Upload (no endpoint redeployment needed) | Full endpoint redeployment required | Full endpoint redeployment required |
+| **Model Updates** | S3 Upload (no endpoint redeployment needed) | Deployment update or restart (with the static repository used here) | Deployment update or restart (with the static repository used here) |
 | **Triton Image** | Pre-built wrapped `sagemaker-tritonserver` | Custom push of standard `tritonserver` to Artifact Registry | Custom push of standard `tritonserver` to Azure Container Registry |
 | **Directory Format** | Flat structure; one `tar.gz` archive per model; folder version `1` only | Standard multi-version structure (`1/`, `2/`, etc.) | Standard multi-version structure (`1/`, `2/`, etc.) |
 | **Deploy Pre-requisites** | No models required during endpoint creation | Models must be present during upload and deploy | Models must be present during upload and deploy |
@@ -42,7 +46,7 @@ The major cloud platforms differ in how they interface with Triton's native APIs
 
 ## Azure ML: Deployment Components
 
-Azure ML online endpoints are built from **four resources**. The built-in `triton_model` type relies on an outdated container image (< 24.09), so a Custom Container Deployment is required to run modern ONNX models.
+Azure ML online endpoints are built from **four resources**. At the time of testing, the built-in `triton_model` type resolved to a Triton image older than 24.09, so a Custom Container Deployment was required to run the ONNX opset these models use. Check the current image version before assuming the same workaround is still needed.
 
 ### Endpoint
 
@@ -113,7 +117,7 @@ ml_client.online_endpoints.begin_create_or_update(endpoint).result()
 
 ## GCP Vertex AI: Deployment Components
 
-Vertex AI provides the **simplest setup** - a standard, un-wrapped Triton container with no proprietary management layer. The deployment consists of **three resources**.
+Of the three setups implemented here, Vertex AI was the **simplest** - a standard, un-wrapped Triton container with no proprietary management layer. The deployment consists of **three resources**.
 
 ### Model
 
@@ -165,7 +169,7 @@ endpoint.deploy(
 
 ### Vertex AI Caveats
 
-- **1.5 MB payload limit** - client-side preprocessing must flatten input arrays and round floats to 3 decimal places to stay under the threshold.
+- **1.5 MB payload limit** - the Vertex AI online prediction request path caps payload size, so client-side preprocessing must flatten input arrays and round floats to 3 decimal places to stay under the threshold. This applies to the online `predict` path, not to every way of running the container.
 - **Model routing** - use the `X-Vertex-Ai-Triton-Redirect` header to target a specific model inside the container (e.g. `v2/models/resnet50_onnx/infer`).
 This value is only used during deployment initialization to satisfy the endpoint setup requirements and is not used for subsequent inference requests, which can target any model available in the Triton model repository.
 
@@ -179,7 +183,7 @@ SageMaker Multi-Model Endpoints work **fundamentally differently** from Azure an
 
 <SageMakerMmeFlow />
 
-If GPU memory is full, an **automatic LRU policy** unloads inactive models. This enables thousands of models on a single GPU, at the cost of cold-start latency on first invocation. SageMaker wraps Triton with `sagemaker-tritonserver`, which prevents direct access to native Triton APIs and restricts archives to a single version folder `1`.
+Under resource pressure SageMaker evicts inactive models with an **LRU caching policy**, so a large catalogue can be served from one endpoint without every model being resident at once. How many models that is in practice depends on model size, host RAM as well as GPU VRAM, request concurrency and your tolerance for the cold-start latency a reload costs. SageMaker wraps Triton with `sagemaker-tritonserver`, which prevents direct access to native Triton APIs and restricts each archive to a single version folder `1` - a constraint of SageMaker's model packaging contract, not of Triton's own versioning. Target models are selected through SageMaker's `TargetModel` request parameter rather than by a native Triton model name.
 
 ### Model
 
@@ -243,12 +247,12 @@ Testing these configurations across different workloads highlighted key operatio
 ### GCP Vertex AI
 
 - **What Succeeded:** The simplest and most standard deployment experience. Compatible with native Triton directory configurations, allowing for multi-version setups.
-- **What Failed:** The strict 1.5 MB payload limit requires aggressive client-side preprocessing. High-frequency model updates are slow due to the requirement of a full endpoint redeployment.
+- **What Failed:** The strict 1.5 MB payload limit requires aggressive client-side preprocessing. High-frequency model updates are slow, because with a statically loaded repository each change means a deployment update.
 
 ### Azure ML Managed Endpoints
 
 - **What Succeeded:** Provides robust enterprise scaling and deployment isolation once configured.
-- **What Failed:** Extremely high initial configuration complexity. Bypassing Azure's outdated default `triton_model` image is necessary to run modern ONNX models.
+- **What Failed:** Extremely high initial configuration complexity. Bypassing the default `triton_model` image was necessary to run the ONNX opset these models use.
 
 ---
 
@@ -266,7 +270,7 @@ The choice of cloud provider for hosting a multi-model Triton deployment depends
 
 ## Code, Models, and Support
 
-All code, models, and weights used in this post are available in the [accompanying repository](https://github.com/michalwojdylak/hosting-multiple-models-on-nvidia-triton), including the three end-to-end notebooks:
+All code, models, and weights used in this post are available in the [accompanying repository](https://github.com/michalwojdylak/hosting-multiple-models-on-nvidia-triton), including the three end-to-end deployment notebooks (Triton 24.09):
 
 - `aws-sagemaker-mme-with-triton.ipynb`
 - `gcp-vertex-ai-endpoint-with-triton.ipynb`
