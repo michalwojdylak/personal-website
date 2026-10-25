@@ -41,8 +41,9 @@ export const projects: Project[] = [
   {
     title: "Multi-Model Serving on Triton",
     description:
-      "Three ONNX vision models served from one GPU with NVIDIA Triton Inference Server, with deployment notebooks for AWS SageMaker, Azure ML and GCP Vertex AI.",
-    highlight: "Up to 90% lower GPU serving cost than one instance per model.",
+      "Three ONNX image classification models - ResNet-50, ConvNeXt Tiny and MobileNet V2 - served from one GPU with NVIDIA Triton Inference Server, with end-to-end deployment notebooks for AWS SageMaker MME, Azure ML and GCP Vertex AI.",
+    highlight:
+      "Three cloud multi-model patterns compared on what each makes easy - not a cost benchmark.",
     technologies: ["Triton", "ONNX", "SageMaker", "Azure ML", "Vertex AI"],
     github:
       "https://github.com/michalwojdylak/hosting-multiple-models-on-nvidia-triton",
