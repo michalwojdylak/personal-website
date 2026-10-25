@@ -9,13 +9,13 @@ audience and recruiters.
 
 ## Tech stack
 
-- **[Next.js 15](https://nextjs.org/)** — App Router, React Server Components
-- **TypeScript** — strict mode
-- **Tailwind CSS** — with `@tailwindcss/typography`
-- **MDX** — blog posts as local files via `next-mdx-remote`
-- **rehype-pretty-code** + **Shiki** — build-time syntax highlighting
-- **next-themes** — system-aware dark mode
-- Static generation wherever possible — optimized for the **Vercel Free Plan**
+- **[Next.js 15](https://nextjs.org/)** - App Router, React Server Components
+- **TypeScript** - strict mode
+- **Tailwind CSS** - with `@tailwindcss/typography`
+- **MDX** - blog posts as local files via `next-mdx-remote`
+- **rehype-pretty-code** + **Shiki** - build-time syntax highlighting
+- **next-themes** - system-aware dark mode
+- Static generation wherever possible - optimized for the **Vercel Free Plan**
 
 ## Features
 
@@ -63,6 +63,7 @@ audience and recruiters.
 │       ├── site-config.ts     # Single source of truth for site metadata
 │       ├── posts.ts           # MDX reading, frontmatter, reading time, TOC
 │       ├── projects.ts        # Project showcase data
+│       ├── tags.ts            # Tag labels and topic/tech kinds
 │       └── utils.ts
 ├── next.config.ts
 ├── tailwind.config.ts
@@ -97,7 +98,7 @@ Create a new `.mdx` file in `content/blog/`. The filename becomes the URL slug
 title: "Your Post Title"
 description: "A one-or-two sentence summary used for cards and SEO."
 date: "2026-06-20"
-tags: ["LLM", "Infrastructure"]
+tags: ["llm-inference", "benchmarks", "vllm"]
 published: true
 author: "Michał Wojdylak"
 ---
@@ -115,7 +116,7 @@ print("Code blocks get syntax highlighting and a copy button.")
 
 - Reading time is calculated automatically.
 - Set `published: false` to hide a draft from the site, RSS, and sitemap.
-- `tags` power the blog filtering UI.
+- `tags` are slugs from `src/lib/tags.ts`, which gives each one a readable label and a kind: `topic` tags (2-3 per post) drive the blog filter, `tech` tags name the tools used. Add new slugs there. Any tag links to `/blog?tag=<slug>`.
 
 ## Adding a project
 
@@ -126,17 +127,17 @@ Edit `src/lib/projects.ts` and add an entry to the `projects` array. Set
 
 Most content lives in a few places:
 
-- `src/lib/site-config.ts` — name, role, description, URL, email, social links,
+- `src/lib/site-config.ts` - name, role, description, URL, email, social links,
   navigation.
-- `src/app/about/page.tsx` — bio and skills categories.
-- `src/lib/projects.ts` — projects.
-- Theme colors — CSS variables in `src/app/globals.css`.
+- `src/app/about/page.tsx` - bio and skills categories.
+- `src/lib/projects.ts` - projects.
+- Theme colors - CSS variables in `src/app/globals.css`.
 
 ## Deploying to Vercel
 
 1. Push this repository to GitHub.
 2. Go to [vercel.com/new](https://vercel.com/new) and import the repository.
-3. Vercel auto-detects Next.js — no configuration needed. Click **Deploy**.
+3. Vercel auto-detects Next.js - no configuration needed. Click **Deploy**.
 4. Add your custom domain `michalwojdylak.com` under **Settings → Domains** and
    update the DNS records as instructed.
 
@@ -148,12 +149,12 @@ absolute SEO links, OG images, the sitemap, and RSS feed resolve correctly.
 
 The structure is intentionally simple and ready to grow into:
 
-- **Benchmark dashboards** & **interactive charts** — add client components and
+- **Benchmark dashboards** & **interactive charts** - add client components and
   embed them directly in MDX posts.
-- **AI experiment results** — store as MDX or structured data under `content/`.
-- **Project case studies** — extend `src/lib/projects.ts` with detail pages.
-- **Newsletter** — drop a signup component into the footer or blog.
-- **Analytics** — add Vercel Analytics or Plausible in `layout.tsx`.
+- **AI experiment results** - store as MDX or structured data under `content/`.
+- **Project case studies** - extend `src/lib/projects.ts` with detail pages.
+- **Newsletter** - drop a signup component into the footer or blog.
+- **Analytics** - add Vercel Analytics or Plausible in `layout.tsx`.
 
 ## License
 

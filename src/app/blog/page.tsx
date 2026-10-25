@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { getAllPosts, getAllTags } from "@/lib/posts";
+import { Suspense } from "react";
+import { getAllPosts, getTagCounts } from "@/lib/posts";
 import { PageHeader } from "@/components/page-header";
 import { BlogSearch } from "@/components/blog-search";
 
@@ -11,18 +12,20 @@ export const metadata: Metadata = {
 
 export default function BlogPage() {
   const posts = getAllPosts();
-  const tags = getAllTags();
+  const tagCounts = getTagCounts();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
       <PageHeader
         title="Blog"
-        description="Notes and deep dives on AI infrastructure, LLM deployment, MLOps, and building reliable production ML systems."
+        description="Benchmarks and deep dives on LLM inference, retrieval, and serving models in production. Every post comes with the code to reproduce it."
       />
       <div className="mt-8">
-        <BlogSearch posts={posts} tags={tags} />
+        {/* useSearchParams in BlogSearch needs a Suspense boundary for static rendering. */}
+        <Suspense>
+          <BlogSearch posts={posts} tagCounts={tagCounts} />
+        </Suspense>
       </div>
     </div>
   );
 }
-

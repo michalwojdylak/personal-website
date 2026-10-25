@@ -18,7 +18,7 @@ export function Pre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard may be unavailable (e.g. insecure context) — fail silently.
+      // Clipboard may be unavailable (e.g. insecure context) - fail silently.
     }
   };
 

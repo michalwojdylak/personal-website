@@ -10,6 +10,7 @@ import {
 } from "@/lib/posts";
 import { siteConfig } from "@/lib/site-config";
 import { formatDate } from "@/lib/utils";
+import { getTag, sortTags } from "@/lib/tags";
 import { Mdx } from "@/components/mdx";
 import { Tag } from "@/components/tag";
 import { TableOfContents } from "@/components/table-of-contents";
@@ -49,7 +50,7 @@ export async function generateMetadata({
       description: post.description,
       publishedTime: post.date,
       authors: [siteConfig.author.name],
-      tags: post.tags,
+      tags: post.tags.map((tag) => getTag(tag).label),
       images: [{ url: ogImage, width: 1200, height: 630, alt: post.title }],
     },
     twitter: {
@@ -80,7 +81,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       name: post.author ?? siteConfig.author.name,
       url: siteConfig.url,
     },
-    keywords: post.tags.join(", "),
+    keywords: post.tags.map((tag) => getTag(tag).label).join(", "),
   };
 
   return (
@@ -112,9 +113,9 @@ export default async function BlogPostPage({ params }: PageProps) {
               {post.description}
             </p>
             {post.tags.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {post.tags.map((tag) => (
-                  <Tag key={tag} name={tag} />
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {sortTags(post.tags).map((tag) => (
+                  <Tag key={tag.slug} slug={tag.slug} />
                 ))}
               </div>
             )}

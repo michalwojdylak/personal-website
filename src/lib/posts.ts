@@ -79,13 +79,15 @@ export function getFeaturedPosts(limit = 3): PostMeta[] {
   return getAllPosts().slice(0, limit);
 }
 
-/** Return a unique, sorted list of all tags across posts. */
-export function getAllTags(): string[] {
-  const tags = new Set<string>();
+/** Return how many published posts use each tag. */
+export function getTagCounts(): Record<string, number> {
+  const counts: Record<string, number> = {};
   for (const post of getAllPosts()) {
-    post.tags.forEach((tag) => tags.add(tag));
+    post.tags.forEach((tag) => {
+      counts[tag] = (counts[tag] ?? 0) + 1;
+    });
   }
-  return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  return counts;
 }
 
 /** Find adjacent posts for previous/next navigation. */

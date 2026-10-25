@@ -9,7 +9,7 @@ import {
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Get in touch with Michał Wojdylak — AI Infrastructure Engineer. Available for roles and collaboration.",
+    "Get in touch with Michał Wojdylak - AI Infrastructure Engineer. Available for roles and collaboration.",
 };
 
 export default function ContactPage() {

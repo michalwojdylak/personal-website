@@ -2,7 +2,7 @@
 title: "Hosting Multiple Models on NVIDIA Triton Server Across AWS, Azure, and GCP"
 description: "By consolidating multiple ML models onto a single GPU instance using NVIDIA Triton Inference Server, engineering teams can achieve up to a 90% reduction in cloud infrastructure costs while maintaining sub-millisecond latencies."
 date: 2025-07-06
-tags: ["triton", "gpu", "aws", "azure", "gcp", "mlops", "inference", "multi-model"]
+tags: ["model-serving", "cost-optimization", "triton", "aws", "azure", "gcp"]
 published: true
 author: "Michał Wojdylak"
 heroImage: "/images/blog/hosting-multiple-models-on-nvidia-triton/hero.png"
@@ -177,7 +177,7 @@ SageMaker Multi-Model Endpoints work **fundamentally differently** from Azure an
 
 ### SageMaker Multi-Model Request Pipeline
 
-![SageMaker multi-model request pipeline](/images/blog/hosting-multiple-models-on-nvidia-triton/graph.png)
+<SageMakerMmeFlow />
 
 If GPU memory is full, an **automatic LRU policy** unloads inactive models. This enables thousands of models on a single GPU, at the cost of cold-start latency on first invocation. SageMaker wraps Triton with `sagemaker-tritonserver`, which prevents direct access to native Triton APIs and restricts archives to a single version folder `1`.
 

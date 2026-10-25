@@ -1,20 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { PostMeta } from "@/lib/posts";
+import { getTag, sortTags } from "@/lib/tags";
 import { BlogCard } from "@/components/blog-card";
 import { Tag } from "@/components/tag";
 import { cn } from "@/lib/utils";
 
 export function BlogSearch({
   posts,
-  tags,
+  tagCounts,
 }: {
   posts: PostMeta[];
-  tags: string[];
+  tagCounts: Record<string, number>;
 }) {
   const [query, setQuery] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  // The active tag lives in the URL (/blog?tag=vllm) so tag links work from anywhere.
+  const activeTag = useSearchParams().get("tag");
+  const topics = sortTags(Object.keys(tagCounts)).filter(
+    (tag) => tag.kind === "topic",
+  );
+  const activeTech =
+    activeTag && getTag(activeTag).kind === "tech" ? getTag(activeTag) : null;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -23,7 +32,7 @@ export function BlogSearch({
       const matchesQuery = q
         ? post.title.toLowerCase().includes(q) ||
           post.description.toLowerCase().includes(q) ||
-          post.tags.some((tag) => tag.toLowerCase().includes(q))
+          post.tags.some((tag) => getTag(tag).label.toLowerCase().includes(q))
         : true;
       return matchesTag && matchesQuery;
     });
@@ -44,11 +53,12 @@ export function BlogSearch({
           />
         </div>
 
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTag(null)}
+        {topics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs text-muted-foreground">Topics</span>
+            <Link
+              href="/blog"
+              scroll={false}
               className={cn(
                 "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
                 activeTag === null
@@ -57,17 +67,30 @@ export function BlogSearch({
               )}
             >
               All
-            </button>
-            {tags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-              >
-                <Tag name={tag} active={activeTag === tag} />
-              </button>
+            </Link>
+            {topics.map((tag) => (
+              <Tag
+                key={tag.slug}
+                slug={tag.slug}
+                active={activeTag === tag.slug}
+                count={tagCounts[tag.slug]}
+              />
             ))}
           </div>
+        )}
+
+        {activeTech && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            Using
+            <Tag slug={activeTech.slug} active href={false} />
+            <Link
+              href="/blog"
+              scroll={false}
+              className="text-xs underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Clear
+            </Link>
+          </p>
         )}
       </div>
 

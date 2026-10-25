@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { mdxComponents } from "@/components/mdx-components";
 
 const prettyCodeOptions: Options = {
-  // Dual themes — light and dark are both emitted; CSS swaps them.
+  // Dual themes - light and dark are both emitted; CSS swaps them.
   theme: {
     light: "github-light",
     dark: "github-dark",
