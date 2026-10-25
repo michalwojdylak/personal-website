@@ -25,21 +25,21 @@ Choosing an inference engine for large language model serving is a decision with
 |----------|-------------|-----|
 | **Low concurrency, latency-critical** | vLLM | Lowest TTFT at c8 (834 ms); simple deployment |
 | **High-throughput serving (c32+)** | TensorRT-LLM | 37% higher throughput at c64; best TTFT under load |
-| **Long-context (8K+ tokens)** | TensorRT-LLM | 2× throughput, 7.5× faster TTFT vs alternatives |
-| **Streaming quality (smooth tokens)** | SGLang | Lowest and most consistent ITL across concurrency levels |
-| **Maximum throughput per dollar** | SGLang + MoE | 3.6× throughput using Qwen3-30B-A3B vs dense 32B |
+| **Long-context (8K+ tokens)** | TensorRT-LLM | 2× throughput, 7.5-8× faster TTFT vs alternatives |
+| **Streaming quality (smooth tokens)** | SGLang | Lowest ITL at concurrency 32 and 64 |
+| **Highest measured throughput** | SGLang + MoE | 3.6× throughput using Qwen3-30B-A3B vs dense 32B |
 
 ### Key Takeaways
 
 1. **TensorRT-LLM excels at high concurrency and long-context workloads**, but requires more complex deployment (engine compilation, model conversion) and shows higher ITL at high load.
 
-2. **vLLM provides the best low-concurrency latency** and the most accessible deployment experience. Its quantization support makes AWQ/GPTQ models perform 43% better than FP8 - a significant finding for teams using vLLM.
+2. **vLLM provides the best low-concurrency latency** and the most accessible deployment experience. The AWQ/GPTQ checkpoints it serves were 43% faster than the FP8 one - a significant finding for teams using vLLM.
 
-3. **SGLang delivers the most consistent per-token streaming** with the lowest ITL, making it ideal for interactive applications where typing-speed output matters.
+3. **SGLang delivers the lowest ITL at concurrency 32 and 64** (TensorRT-LLM leads at concurrency 8), making it a good fit for interactive applications under load, where typing-speed output matters.
 
-4. **MoE models are a game-changer.** The Qwen3-30B-A3B model running on SGLang outperforms every dense model configuration across all engines - by a wide margin. Teams should evaluate MoE alternatives before scaling GPU infrastructure.
+4. **MoE models are a game-changer.** The Qwen3-30B-A3B model running on SGLang outperforms every dense model configuration across all engines - by a wide margin on serving performance. These runs measure serving performance only, so evaluate output quality separately before treating the models as interchangeable.
 
-5. **Quantization format matters more than expected on vLLM.** AWQ and GPTQ outperform FP8 by 43% on throughput, suggesting that 4-bit quantization is the practical default for vLLM deployments.
+5. **Quantization format matters more than expected on vLLM.** The tested AWQ and GPTQ checkpoints outperformed the tested FP8 checkpoint by 43% on throughput. This is a comparison of three specific checkpoints, not a controlled test of bit width alone: the formats differ in kernels, checkpoint configuration and implementation maturity. Measure output quality and memory use before making 4-bit the default.
 
 ---
 
@@ -67,8 +67,8 @@ All experiments run on a single machine with:
 |--------|-------------|
 | **Throughput (req/s)** | Completed requests per second across all concurrent users |
 | **Output Token Throughput (tok/s)** | Total output tokens generated per second |
-| **TTFT avg (ms)** | Time To First Token - measures prefill latency |
-| **TTFT p99 (ms)** | 99th-percentile TTFT - worst-case first-token latency |
+| **TTFT avg (ms)** | Time To First Token - end-to-end time from sending a request to the first streamed token, including queueing, scheduling and prefill. Prefill dominates for long inputs |
+| **TTFT p99 (ms)** | 99th-percentile first-token latency: 99% of requests returned their first token at or below this value |
 | **ITL avg (ms)** | Inter-Token Latency - average time between consecutive output tokens |
 
 ---
@@ -99,15 +99,15 @@ This experiment measures how each engine handles increasing concurrent request l
 
 ### Analysis
 
-**TensorRT-LLM dominates throughput at scale.** At concurrency 64, it delivers **342 tok/s** - a **37% advantage** over vLLM (245 tok/s) and SGLang (250 tok/s). Its throughput continues to increase from c32 to c64, while both vLLM and SGLang plateau.
+**TensorRT-LLM dominates throughput at scale.** At concurrency 64, it delivers **342 tok/s** - **40% above** vLLM (245 tok/s) and **37% above** SGLang (250 tok/s). Its throughput continues to increase from c32 to c64, while both vLLM and SGLang plateau.
 
 **vLLM has the best low-concurrency latency.** At c8, vLLM achieves an average TTFT of just **834 ms** - 2.4× faster than SGLang (2,029 ms) and 3× faster than TensorRT-LLM (2,541 ms). This makes vLLM the best choice for low-traffic, latency-sensitive workloads.
 
-**SGLang offers the best ITL consistency.** Across all concurrency levels, SGLang maintains the lowest inter-token latency: **60.6 → 76.6 → 77.8 ms**. This translates to the smoothest token streaming experience for end users.
+**SGLang offers the best ITL under load.** At concurrency 32 and 64 it has the lowest inter-token latency (**76.6** and **77.8 ms**); at concurrency 8 TensorRT-LLM leads with **54.0 ms**, ahead of vLLM (59.2 ms) and SGLang (60.6 ms). Under load, SGLang gives the smoothest token streaming of the three.
 
 **TensorRT-LLM's TTFT scales most gracefully under load.** At c32, TensorRT-LLM's TTFT is **4,554 ms** - less than half of vLLM's 11,125 ms and SGLang's 12,332 ms. At c64, the gap narrows but TensorRT-LLM still leads at **11,738 ms** vs ~40,500 ms for the other two.
 
-**All three engines hit a throughput ceiling around c32-c64.** vLLM and SGLang show negligible throughput gain from c32 to c64 (< 1% increase), while TTFT roughly doubles. TensorRT-LLM still extracts meaningful throughput gain at c64 (+18% over c32), but at the cost of significantly higher ITL (124.4 ms).
+**vLLM and SGLang gained almost nothing from c32 to c64.** Both show less than 1% extra throughput while TTFT roughly doubles. Only two concurrency points were tested, so this does not locate their maximum throughput - higher concurrency could yield further gains or exhaust resources. TensorRT-LLM still extracts meaningful throughput gain at c64 (+18% over c32), but at the cost of significantly higher ITL (124.4 ms).
 
 ---
 
@@ -127,9 +127,9 @@ Long-context workloads (document summarization, RAG with large context windows) 
 
 ### Analysis
 
-**TensorRT-LLM is the clear winner for long-context workloads.** It delivers **nearly 2× the throughput** (75.9 tok/s vs ~40 tok/s) and an astonishing **7.5× faster average TTFT** compared to vLLM and SGLang.
+**TensorRT-LLM is the clear winner for long-context workloads.** It delivers **nearly 2× the throughput** (75.9 tok/s vs ~40 tok/s) and an astonishing **7.5× faster average TTFT than vLLM, 8× faster than SGLang**.
 
-The TTFT gap is the most striking result in this entire benchmark suite: TensorRT-LLM processes 8,000 input tokens and returns the first output token in **8.6 seconds**, while vLLM needs **63.8 seconds** and SGLang needs **68.6 seconds**. This suggests TensorRT-LLM's fused attention kernels and optimized KV-cache allocation provide a substantial advantage when prefill dominates request time.
+The TTFT gap is the most striking result in this entire benchmark suite: TensorRT-LLM processes 8,000 input tokens and returns the first output token in **8.6 seconds**, while vLLM needs **63.8 seconds** and SGLang needs **68.6 seconds**. Fused attention kernels and KV-cache allocation are the likely explanation, but a gap this large deserves confirmation before being treated as an engine-level property: these are single runs, and I have not verified that all three engines ran with equivalent batching, token counts and prefix-cache state. Treat it as an observed result in this configuration, pending repeated runs and a look at the raw latency distributions.
 
 **vLLM has a slight edge over SGLang** in both throughput (41.0 vs 38.2 tok/s) and TTFT (63.8s vs 68.6s), though both are significantly slower than TensorRT-LLM.
 
@@ -153,7 +153,7 @@ This experiment isolates the impact of quantization format by holding the infere
 
 ### Analysis
 
-**AWQ and GPTQ dramatically outperform FP8 on vLLM.** Both 4-bit quantization methods deliver **43% higher throughput** (349 vs 244 tok/s) and **4× faster TTFT** (2.7s vs 11.1s) compared to FP8.
+**The tested AWQ and GPTQ checkpoints dramatically outperform the tested FP8 one on vLLM.** Both 4-bit checkpoints deliver **43% higher throughput** (349 vs 244 tok/s) and **4× faster TTFT** (2.7s vs 11.1s) than FP8. This compares three specific checkpoints on one vLLM setup, not bit width in isolation: kernels, checkpoint configuration and implementation maturity all differ between the formats, and neither output quality nor memory use was measured here.
 
 **AWQ and GPTQ are virtually identical in performance.** Throughput differs by less than 0.5%, and latency metrics are within noise margins. This indicates that vLLM's INT4 kernel implementations for both formats are equally optimized.
 
@@ -185,10 +185,23 @@ Mixture-of-Experts (MoE) models activate only a subset of parameters per token, 
 - **15.8× faster average TTFT** (779 ms vs 12,332 ms)
 - **2.5× lower inter-token latency** (31.1 ms vs 76.6 ms)
 
-These are the largest performance differences observed across all experiments. The MoE architecture fundamentally changes the compute profile - with only 3B active parameters, the model effectively runs like a much smaller dense model while maintaining output quality comparable to the full 32B dense variant.
+These are the largest performance differences observed across all experiments. The MoE architecture fundamentally changes the compute profile - with only 3B active parameters, the model effectively runs like a much smaller dense model. This benchmark measures serving performance only, not answer quality, so a separate evaluation is needed before treating the two models as interchangeable.
 
 **Sub-second TTFT at c32 is a standout result.** The MoE model achieves **779 ms average TTFT** even at concurrency 32 - faster than the dense model manages at concurrency 8 with any engine. Combined with a p99 TTFT of just 1,303 ms, this makes the MoE model viable for real-time, latency-sensitive applications at high concurrency.
 
+
+---
+
+## Limitations
+
+These numbers come from one machine and one benchmark harness, and they are a starting point for choosing an inference stack rather than a universal ranking of engines:
+
+- Each configuration was measured once. Run-to-run variability is not reported, so small differences should not be read as meaningful.
+- The post does not publish the exact engine versions or commits, model revisions, or serving configuration (batch and token limits, KV-cache settings, prefix caching, speculative decoding). Results on another installation may differ for those reasons.
+- GPU utilization, memory consumption and failed-request counts were not recorded.
+- Output quality was never measured. Every comparison here is about serving performance.
+
+Before making a production decision, benchmark your own model, prompt-length distribution, concurrency, latency SLOs, output quality and infrastructure cost.
 ---
 
 ## Reproducing These Benchmarks
