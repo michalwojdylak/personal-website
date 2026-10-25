@@ -1,6 +1,6 @@
 ---
 title: "Agentic RAG, Graph-R1, MetaRAG and Friends on One Search Engine: What Actually Helps in 2026?"
-description: "Nine retrieval strategies from 2024-2026 - naive and reranked hybrid search, MetaRAG, agentic RAG, A-RAG, Search-R1, LightRAG and Graph-R1 - benchmarked on the same OpenSearch index, the same generator and the same 1,000 questions. The biggest lever turned out to be the generator's reasoning, not the retrieval architecture."
+description: "Nine retrieval strategies from 2024-2026 - naive and reranked hybrid search, MetaRAG, agentic RAG, A-RAG, Search-R1, LightRAG and Graph-R1 - benchmarked on the same OpenSearch index, the same base generator and the same 1,000 questions. In this benchmark the biggest lever turned out to be the generator's reasoning, not the retrieval architecture."
 date: 2026-10-25
 tags: ["rag", "benchmarks", "agentic-rag", "graphrag", "opensearch"]
 published: true
@@ -11,13 +11,15 @@ repo: "https://github.com/michalwojdylak/rag-2026-benchmark"
 
 # Agentic RAG, Graph-R1, MetaRAG and Friends on One Search Engine: What Actually Helps in 2026?
 
-RAG papers each bring their own retriever, corpus split, generator and metric, so their tables don't compose. The practical question is narrower: **if my search engine is fixed, which way of asking it questions works best?** This post benchmarks nine retrieval strategies published between 2024 and 2026 - from a single hybrid query to RL-trained search agents and knowledge hypergraphs - with everything except the retrieval strategy held constant: one OpenSearch node, one embedding model, one generator, one judge, and the same 1,000 questions over five datasets.
+RAG papers each bring their own retriever, corpus split, generator and metric, so their tables don't compose. The practical question is narrower: **if my search engine is fixed, which way of asking it questions works best?** This post benchmarks nine retrieval strategies published between 2024 and 2026 - from a single hybrid query to RL-trained search agents and knowledge hypergraphs - holding the search infrastructure, the questions and the judge constant: one OpenSearch node, one embedding model, one base generator, one judge, and the same 1,000 questions over five datasets. Each method keeps its own retrieval workflow, so the number of model calls, the helper models, the graph indexes and - for Search-R1 - the generator itself still differ; those costs are accounted for separately rather than equalised. This is a systems comparison of implementations, not a pure retrieval-algorithm comparison.
 
 ---
 
 ## TL;DR - Summary and Recommendations
 
 ![Accuracy vs cost per 1,000 questions](/images/blog/rag-2026-benchmark/accuracy_vs_cost.png)
+
+LLM-judged accuracy on the multi-hop datasets against inference cost per 1,000 questions (index construction excluded). n = 200 questions per dataset, except Search-R1 at n = 100.
 
 ### Method Selection Guide
 
@@ -26,23 +28,23 @@ RAG papers each bring their own retriever, corpus split, generator and metric, s
 | **Cheapest strong baseline** | Hybrid search + cross-encoder | 71.2 % multi-hop at $1.26 per 1,000 questions |
 | **Highest accuracy** | Agentic loop + reasoning | A-RAG 86.5 %, simple agent loop 85 % with `reasoning_effort="medium"` |
 | **Best accuracy per dollar with reasoning** | Naive RAG + reasoning | 78 % at $3.39 per 1,000 questions |
-| **Generator without reasoning, tricky questions** | MetaRAG | Best on 2Wiki (79 %) at 4-6 LLM calls per question |
-| **Zero API cost** | Search-R1 7B (local) | 64 % multi-hop on a MacBook, 1-2 min per question |
-| **Graph RAG** | LightRAG | Top cluster (71.3 %), but 14× the per-query cost of a reranker |
+| **Generator without reasoning, tricky questions** | MetaRAG | Highest 2Wiki score here (79 %, +7.5 pp over the next method) at 4-6 LLM calls per question |
+| **No external API spend** | Search-R1 7B (local) | 64 % multi-hop on a MacBook, 1-2 min per question (local compute instead of API cost) |
+| **Graph RAG** | LightRAG | In the top cluster (71.3 %), but 14× the per-query cost of a reranker |
 
 ### Key Takeaways
 
-1. **Turning on the generator's reasoning moved accuracy more than any retrieval architecture.** On the same 200 multi-hop questions, `gpt-5.4-mini` with `reasoning_effort="medium"` lifted naive RAG from 56 % to 78 % and the agentic loops from ~66 % to **85-86 %**. Reasoning also made the agents *search more* (A-RAG: 2.1 → 6.0 searches per question).
+1. **Turning on the generator's reasoning moved accuracy more than any retrieval architecture tested here.** On the same 200 multi-hop questions, `gpt-5.4-mini` with `reasoning_effort="medium"` lifted naive RAG from 56 % to 78 % and the agentic loops from ~66 % to **85-86 %**. Reasoning also made the agents *search more* (A-RAG: 2.1 → 6.0 searches per question).
 
 2. **With reasoning off, nine quite different systems land within a few points of each other.** On the multi-hop sets MetaRAG (72.5 %), LightRAG (71.3 %) and plain hybrid search + a cross-encoder (71.2 %) share the top, with the agents (68 %) and one-shot hybrid search (67 %) right behind - differences mostly inside the confidence intervals.
 
 3. **The cheapest strong system is boring:** OpenSearch hybrid query (BM25 + k-NN, RRF) → local `bge-reranker-v2-m3` → one LLM call. **$1.26 per 1,000 questions.** LightRAG matches it at 14× the per-query cost plus a ~$20 graph build.
 
-4. **Graph-R1 is only as good as its RL-trained policy**, which is not released. With a prompted policy its think/query loop asks one question and stops (93 % of 2Wiki questions), landing at 43 % on multi-hop vs 67 % for naive RAG.
+4. **Graph-R1's hypergraph is only as good as the policy exploring it.** The authors' GRPO-trained policy is not released, so everything below is an *adaptation of the framework with a prompted policy*, not a reproduction of their system. With a prompted policy the think/query loop asks one question and stops (93 % of 2Wiki questions), landing at 43 % on multi-hop vs 67 % for naive RAG.
 
-5. **MetaRAG is a reasoning prosthesis:** best on 2Wiki with reasoning off (79 %), nearly useless once the model reasons.
+5. **MetaRAG mostly substitutes for generator reasoning:** highest 2Wiki score with reasoning off (79 %), but its advantage shrinks once the model reasons.
 
-6. **An RL-trained 7B (Search-R1) on a MacBook** reaches 64 % on multi-hop, 4 pp behind `gpt-5.4-mini` naive RAG on the same questions (tied on MuSiQue), at $0 API cost and 1-2 minutes per question.
+6. **An RL-trained 7B (Search-R1) on a MacBook** reaches 64 % on multi-hop, 4 pp behind `gpt-5.4-mini` naive RAG on the same questions (tied on MuSiQue), at no external API cost (local compute instead) and 1-2 minutes per question.
 
 7. **Check your benchmark first:** on GraphRAG-Bench Medical the LLM alone scores 90 %.
 
@@ -50,11 +52,11 @@ RAG papers each bring their own retriever, corpus split, generator and metric, s
 
 ## Test Environment and Methodology
 
-Everything except the retrieval strategy is held constant:
+Held constant across methods:
 
 - **Search engine:** one **OpenSearch 2.19** node - BM25, Lucene HNSW vectors, the native `hybrid` query with an RRF search pipeline, phrase search with highlighting
 - **Embeddings:** `bge-base-en-v1.5`, running locally
-- **Generator:** `gpt-5.4-mini` (`reasoning_effort="none"` for the main runs)
+- **Generator:** `gpt-5.4-mini` (`reasoning_effort="none"` for the main runs) for every method except Search-R1, which *is* a trained 7B model and runs locally
 - **Judge:** `gpt-4.1-mini` - a different model family, using A-RAG's correct/incorrect rubric
 - **Datasets:** the unified datasets released with A-RAG - MuSiQue, HotpotQA, 2WikiMultiHopQA (from the LinearRAG setup), plus GraphRAG-Bench Medical and Novel - each with its own closed corpus, **200 sampled questions each**
 
@@ -67,12 +69,14 @@ Where a paper's contribution is *how to ask for data* - agentic RAG, A-RAG, Meta
 | **closed book** | the LLM alone | - |
 | **naive RAG** | one hybrid query, top-8 passages | OpenSearch |
 | **rerank RAG** | hybrid top-30 → cross-encoder → top-8 | + `bge-reranker-v2-m3` |
-| **MetaRAG** | answer, *monitor* against an independent expert, *critic* classifies the error, *planner* rewrites the query | Zhou et al., WWW'24 (via the SIGIR'26 reproduction) |
+| **MetaRAG** | answer, *monitor* against an independent expert, *critic* classifies the error, *planner* rewrites the query | Zhou et al., WWW'24, [arXiv 2402.11626](https://arxiv.org/abs/2402.11626) (code via the SIGIR'26 reproduction, [iai-group/sigir2026-metarag](https://github.com/iai-group/sigir2026-metarag)) |
 | **agentic RAG** | the LLM calls one `search` tool in a loop | the pattern from the 2025 agentic RAG survey |
 | **A-RAG** | three tools at different granularity: exact keywords, sentence vectors, full chunk reading | arXiv 2602.03442 (Feb 2026) |
 | **Search-R1** | 7B model trained with PPO to interleave `<think>`, `<search>`, `<answer>` | Jin et al., 2025 |
 | **LightRAG** | LLM-extracted entity/relation graph, local + global keyword retrieval | HKUDS, `lightrag-hku` |
-| **Graph-R1** | n-ary knowledge hypergraph + a think → query → knowledge → answer agent | Luo et al., ICML'26 |
+| **Graph-R1 (prompted)** | n-ary knowledge hypergraph + a think → query → knowledge → answer agent, with a prompted policy in place of the unreleased GRPO-trained one | Luo et al., ICML'26 |
+
+"MetaRAG" is an overloaded name: the method benchmarked here is the **metacognitive** RAG of Zhou et al. (WWW'24), *not* the 2026 EMNLP *MetaRAG: Belief-Action Aligned Policy Optimization for Agentic RAG*, which trains a policy with belief probing, nor the 2025 metamorphic-testing hallucination detector, nor the unrelated PyPI package of the same name. None of the results below say anything about those.
 
 AgenticRAG-R1, which I wanted to include, turned out to be a GRPO training framework without a released checkpoint; Search-R1 represents that family because its weights are public.
 
@@ -96,17 +100,21 @@ LLM-judged accuracy (%) per dataset (the heatmap also includes `graph_r1_fc`, th
 | Graph-R1 (prompted) | 26.0 | 60.0 | 42.0 | 85.0 | 48.5 | 42.7 | 0.84 + build |
 | Search-R1 7B (n=100) | 47.0 | 84.0 | 61.0 | - | - | 64.0 | 0 (local) |
 
-95 % bootstrap CIs are roughly ±6-7 pp per cell (the full table with CIs is in the [repository README](https://github.com/michalwojdylak/rag-2026-benchmark)).
+n = 200 questions per dataset for every method except Search-R1, which was run on the first 100 questions of each multi-hop dataset (its row is not comparable cell-for-cell with the others; Finding 4 compares it against naive RAG on *its* 100 questions). `$ / 1k q` is **inference cost per 1,000 questions and excludes index construction** for every method; the one-off graph builds are shown as "+ build" and quantified in Finding 3. All accuracies are LLM-judged correctness, not exact match.
+
+95 % bootstrap CIs are roughly ±6-7 pp per cell, so the methods between 67 % and 72.5 % multi-hop (naive, rerank, MetaRAG, LightRAG and the two agent loops) are best read as one comparable top group rather than a ranking - choose inside it on cost, latency and operational complexity, not on these decimals. The full table with CIs is in the [repository README](https://github.com/michalwojdylak/rag-2026-benchmark).
 
 ---
 
-## Finding 1: The Generator's Reasoning Is the Biggest Lever
+## Finding 1: In This Benchmark, Generator Reasoning Was the Biggest Lever
 
 **Config:** six methods, first 100 MuSiQue + 100 2Wiki questions, `reasoning_effort` `"none"` vs `"medium"`
 
 The main runs use `reasoning_effort="none"` for every method: `gpt-5.4-mini` refuses function tools combined with reasoning on Chat Completions, and one setting keeps the methods comparable. This experiment re-runs six methods with `"medium"` through the Responses API.
 
 ![Reasoning on vs off](/images/blog/rag-2026-benchmark/reasoning_effect.png)
+
+Both columns use the same 200 questions (the first 100 of MuSiQue and the first 100 of 2Wiki), so they are comparable with each other but not with the 1,000-question table above.
 
 | Method | Reasoning off | Medium | Searches / q (off → medium) | $ / 1k q (off → medium) |
 |--------|:-------------:|:------:|:---------------------------:|:-----------------------:|
@@ -115,7 +123,7 @@ The main runs use `reasoning_effort="none"` for every method: `gpt-5.4-mini` ref
 | MetaRAG | 68.5 | 74.0 | 1.3 → 1.2 | 3.86 → 7.99 |
 | agentic RAG | 65.5 | 85.0 | 2.4 → 4.1 | 3.32 → 10.07 |
 | A-RAG | 66.0 | **86.5** | 2.1 → 6.0 | 6.96 → 19.65 |
-| Graph-R1 | 33.5 | 62.0 | 1.8 → 2.2 | 0.85 → 7.25 |
+| Graph-R1 (prompted) | 33.5 | 62.0 | 1.8 → 2.2 | 0.85 → 7.25 |
 
 ### Analysis
 
@@ -127,19 +135,19 @@ The main runs use `reasoning_effort="none"` for every method: `gpt-5.4-mini` ref
 
 ---
 
-## Finding 2: MetaRAG Is a Reasoning Prosthesis
+## Finding 2: MetaRAG's Advantage Shrinks Once the Generator Reasons
 
 MetaRAG checks its own answers: an independent "expert" answers too; if the two disagree, a critic classifies the error (*"the question asks whose residence, not which building"*) and a planner rewrites the query.
 
-**With reasoning off, this is the best method on 2Wiki** (79 % vs 65.5 % naive), at 4-6 LLM calls per question. **With reasoning on, it adds almost nothing** (68.5 → 74 %) and ends below naive RAG with reasoning (78 %): the model now does that checking itself.
+**With reasoning off, it posts the highest 2Wiki score here** (79 % vs 65.5 % naive - one of the few gaps in this study clearly outside the confidence intervals), at 4-6 LLM calls per question. **With reasoning on, it gains far less** than the other methods (68.5 → 74 %, against naive RAG's 56 → 78 %) and ends below naive RAG with reasoning at twice the cost: the model now does much of that checking itself.
 
 ---
 
-## Finding 3: Graphs - LightRAG Is Solid but Heavy, Graph-R1 Needs Its Policy
+## Finding 3: Graphs - LightRAG Is Solid but Heavy, Graph-R1's Hypergraph Needs a Trained Policy
 
-**LightRAG** is in the top cluster (71.3 % multi-hop) and has the best context recall of any method (82.5 % of short answers appear in its context), but its default context is **~23k tokens per question**: $17.4 per 1,000 questions, 14× naive RAG, plus ~$20 of `gpt-4o-mini` to build graphs for the five corpora. A reranker gets the same accuracy for the price of naive RAG.
+**LightRAG** is in the top cluster (71.3 % multi-hop) and has the best context recall of any method (the short answer appears somewhere in its retrieved context for 82.5 % of questions - necessary for a correct answer, but, as its accuracy shows, not sufficient), but its default context is **~23k tokens per question**: $17.4 per 1,000 questions, 14× naive RAG, plus ~$20 of `gpt-4o-mini` to build graphs for the five corpora. A reranker gets the same accuracy for the price of naive RAG.
 
-**Graph-R1** builds a hypergraph of "knowledge segments" (n-ary facts as sentences, $8.4 for all five corpora) and lets an agent query it. Its authors train that agent with GRPO; without the weights the policy here is the prompted generator, and it collapses: **one query for 93 % of 2Wiki questions, 42.7 % on multi-hop.**
+**Graph-R1** builds a hypergraph of "knowledge segments" (n-ary facts as sentences, $8.4 for all five corpora) and lets an agent query it. Its authors train that agent with GRPO; those weights are not released, so what is measured here is the hypergraph plus a **prompted** policy - an adaptation of the framework, not the authors' trained system. That prompted policy barely explores: **one query for 93 % of 2Wiki questions, 42.7 % on multi-hop.**
 
 An ablation gives the same hypergraph to the function-calling loop of `agentic_rag`: 3× the queries and +17 pp (59.7 %), still below plain passage retrieval, because rewritten facts drop details that raw passages keep (context recall 59 % vs 65-83 %). Reasoning helps it most of all (+28 pp), but even then it issues about one query. **Graph-R1's index is only as good as the policy that explores it**, which is exactly what its own RL ablation says.
 
@@ -158,13 +166,13 @@ An ablation gives the same hypergraph to the function-calling loop of `agentic_r
 
 It searches ~3 times per question (2.6-3.2) and its contexts contain the answer 73.7 % of the time, the same as the frontier-model `agentic_rag` loop (73.5 %): **the RL-trained policy decides when and what to search as well as a much larger prompted model; it loses on reading.**
 
-HotpotQA, which it was trained on, is its best dataset. It is the only method with zero API cost, and the slowest: 70-100 s median per question on an M3 that was also running other jobs.
+HotpotQA, which it was trained on, is its best dataset. It is the only method with no external API spend - the cost moves to local hardware and ~70-100 s of it per question, the slowest in the study, on an M3 that was also running other jobs.
 
 ---
 
 ## Finding 5: Benchmark Hygiene
 
-- **Medical (GraphRAG-Bench) is saturated:** closed book 90 %, every method 84-92 %. It measures medical knowledge, not retrieval.
+- **Medical (GraphRAG-Bench) is saturated:** closed book 90 %, every method 84-92 %. With the generator already knowing most answers, it gives almost no discrimination between retrieval strategies in this setup.
 - **MuSiQue is the discriminating dataset:** closed book 14 %, best non-reasoning method 58 %, best reasoning one 81 %.
 - **The LLM judge is lenient on near misses** ("early 1980s" accepted for "1981"). EM / F1 / Contain are reported next to it for the short-answer sets; they reorder methods inside the top cluster but agree on who is in it (reranked hybrid, MetaRAG, LightRAG) and on the bottom (closed book, prompted Graph-R1).
 
@@ -176,7 +184,7 @@ HotpotQA, which it was trained on, is its best dataset. It is the only method wi
 
 2. **Embedding speed on Apple Silicon.** `Qwen3-Embedding-0.6B` (A-RAG's choice) embedded ~5 passages/s on an M3 via MPS; `bge-base-en-v1.5` ~50/s.
 
-3. **LightRAG indexing slows quadratically** with its default file storages, because it commits every store after every document. Insert many corpus chunks per LightRAG document, micro-batch its embedding calls, and check for FAILED documents afterwards: they are not retried, and an interrupted build can leave one that cannot be repaired.
+3. **LightRAG indexing slowed quadratically** in the configuration used here (`lightrag-hku` with its default file storages), because it commits every store after every document. Insert many corpus chunks per LightRAG document, micro-batch its embedding calls, and check for FAILED documents afterwards: they are not retried, and an interrupted build can leave one that cannot be repaired.
 
 4. **OpenSearch's `hybrid` query + `score-ranker-processor` (RRF) pipeline** is a few lines of JSON and was the most valuable single component in the study.
 
@@ -185,7 +193,8 @@ HotpotQA, which it was trained on, is its best dataset. It is the only method wi
 ## Limitations
 
 - One generator family and one run per configuration; at n = 200, differences under ~5 pp are noise.
-- Graph-R1 and AgenticRAG-R1 are evaluated without their RL-trained policies (none released).
+- Graph-R1 and AgenticRAG-R1 are evaluated without their RL-trained policies (none released), so the Graph-R1 numbers describe this prompted adaptation and are not a reproduction of the published system.
+- Only the search infrastructure, the questions and the judge are shared; model calls, helper models, graph indexes and Search-R1's generator differ by method. That is the point of a systems comparison, but it rules out attributing differences to the retrieval algorithm alone.
 - Search-R1 runs a 4-bit checkpoint on 100 questions per multi-hop dataset, with this benchmark's retriever instead of the E5 + Wikipedia setup it was trained against, and is not evaluated on the long-answer sets.
 - MetaRAG's T5 helper models are replaced by `gpt-5.4-nano`; LightRAG's MuSiQue graph misses 4.7 % of the corpus.
 
