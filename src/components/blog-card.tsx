@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { PostMeta } from "@/lib/posts";
 import { formatDate } from "@/lib/utils";
+import { sortTags } from "@/lib/tags";
 import { Tag } from "@/components/tag";
 
 export function BlogCard({ post }: { post: PostMeta }) {
@@ -40,9 +41,9 @@ export function BlogCard({ post }: { post: PostMeta }) {
       </div>
 
       {post.tags.length > 0 && (
-        <div className="relative z-10 flex flex-wrap gap-2 border-t border-border px-5 py-3">
-          {post.tags.map((tag) => (
-            <Tag key={tag} name={tag} />
+        <div className="relative z-10 flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
+          {sortTags(post.tags).map((tag) => (
+            <Tag key={tag.slug} slug={tag.slug} />
           ))}
         </div>
       )}

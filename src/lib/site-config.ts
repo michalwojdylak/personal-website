@@ -7,10 +7,11 @@
 
 export const siteConfig = {
   name: "Michał Wojdylak",
-  title: "Michał Wojdylak — AI Infrastructure Engineer",
+  title: "Michał Wojdylak - AI Infrastructure Engineer",
   role: "AI Infrastructure Engineer",
   description:
     "Building production AI systems, LLM infrastructure, inference platforms and cloud-native ML solutions.",
+  currently: "AI Lead at WPP Enterprise Solutions · Poznań, Poland",
   url: "https://michalwojdylak.com",
   locale: "en_US",
   email: "wojdylak.michal@gmail.com",
@@ -24,6 +25,7 @@ export const siteConfig = {
   nav: [
     { href: "/", label: "Home" },
     { href: "/blog", label: "Blog" },
+    { href: "/projects", label: "Projects" },
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
   ],

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { MDXComponents } from "mdx/types";
 import { Pre } from "@/components/copy-button";
+import { SageMakerMmeFlow } from "@/components/diagrams/sagemaker-mme-flow";
 
 /**
  * Custom component mapping for MDX content.
@@ -39,6 +40,7 @@ export const mdxComponents: MDXComponents = {
     />
   ),
   Image,
+  SageMakerMmeFlow,
   pre: Pre,
 };
 

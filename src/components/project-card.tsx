@@ -1,7 +1,15 @@
+import Link from "next/link";
 import type { Project } from "@/lib/projects";
 import { GitHubIcon } from "@/components/social-links";
 
-export function ProjectCard({ project }: { project: Project }) {
+/** `compact` drops the description and keeps the headline result. */
+export function ProjectCard({
+  project,
+  compact = false,
+}: {
+  project: Project;
+  compact?: boolean;
+}) {
   return (
     <article className="flex h-full flex-col rounded-lg border border-border bg-card p-5 transition-colors hover:border-accent/50">
       <div className="flex items-start justify-between gap-3">
@@ -21,21 +29,32 @@ export function ProjectCard({ project }: { project: Project }) {
         )}
       </div>
 
-      <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
-        {project.description}
+      {!compact && (
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {project.description}
+        </p>
+      )}
+
+      <div className="flex-1">
+        {project.highlight && (
+          <p className="mt-3 border-l-2 border-accent pl-3 text-sm leading-relaxed">
+            {project.highlight}
+          </p>
+        )}
+      </div>
+
+      <p className="mt-4 font-mono text-xs text-muted-foreground">
+        {project.technologies.join(" · ")}
       </p>
 
-      <ul className="mt-4 flex flex-wrap gap-2">
-        {project.technologies.map((tech) => (
-          <li
-            key={tech}
-            className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground"
-          >
-            {tech}
-          </li>
-        ))}
-      </ul>
+      {project.post && (
+        <Link
+          href={`/blog/${project.post}`}
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
+        >
+          Read the write-up <span aria-hidden="true">→</span>
+        </Link>
+      )}
     </article>
   );
 }
-

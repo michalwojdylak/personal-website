@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    /* Light theme — neutral, professional, engineering-blog inspired. */
+    /* Light theme - neutral, professional, engineering-blog inspired. */
     --background: 0 0% 100%;
     --foreground: 220 14% 11%;
     --muted: 220 14% 96%;
@@ -16,7 +16,7 @@
   }
 
   .dark {
-    /* Dark theme — soft charcoal, easy on the eyes for long reading. */
+    /* Dark theme - soft charcoal, easy on the eyes for long reading. */
     --background: 222 18% 8%;
     --foreground: 210 17% 90%;
     --muted: 220 14% 14%;
@@ -62,7 +62,7 @@
 }
 
 /* Syntax highlighting (rehype-pretty-code + Shiki dual themes). */
-/* Block code is wrapped in a <figure>; inline code is wrapped in a <span> —
+/* Block code is wrapped in a <figure>; inline code is wrapped in a <span> -
    scope block-only rules to figure so inline code stays inline. */
 figure[data-rehype-pretty-code-figure] pre {
   @apply overflow-x-auto rounded-lg border bg-muted/40 py-4 text-sm leading-relaxed;
