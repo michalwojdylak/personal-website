@@ -1,6 +1,6 @@
 ---
 title: "LLM Inference Benchmarks: vLLM vs SGLang vs TensorRT-LLM on a Single L40S"
-description: "A systematic comparison of three leading LLM inference engines — vLLM, SGLang, and TensorRT-LLM — benchmarked on Qwen3-32B across concurrency scaling, long-context, quantization, and MoE workloads on a single NVIDIA L40S GPU."
+description: "A systematic comparison of three leading LLM inference engines - vLLM, SGLang, and TensorRT-LLM - benchmarked on Qwen3-32B across concurrency scaling, long-context, quantization, and MoE workloads on a single NVIDIA L40S GPU."
 date: 2026-08-28
 tags: ["llm", "inference", "vllm", "sglang", "tensorrt-llm", "benchmarks", "l40s", "qwen3", "fp8", "quantization", "moe"]
 published: true
@@ -11,13 +11,13 @@ repo: "https://github.com/michalwojdylak/llm-inference-benchmarks"
 
 # LLM Inference Benchmarks: vLLM vs SGLang vs TensorRT-LLM on a Single L40S
 
-Choosing an inference engine for large language model serving is a decision with direct impact on latency, throughput, and infrastructure cost. This post presents a **head-to-head benchmark** of three production-grade engines — **vLLM**, **SGLang**, and **TensorRT-LLM** — across four real-world workload scenarios on a single NVIDIA L40S GPU. I specifically chose the L40S because it is a practical, mid-range GPU that is less commonly featured in benchmarks — most published comparisons default to the H100, which may not reflect the hardware teams are actually deploying on. All benchmarks use Nvidia AIPerf for reproducible, standardized measurement.
+Choosing an inference engine for large language model serving is a decision with direct impact on latency, throughput, and infrastructure cost. This post presents a **head-to-head benchmark** of three production-grade engines - **vLLM**, **SGLang**, and **TensorRT-LLM** - across four real-world workload scenarios on a single NVIDIA L40S GPU. I specifically chose the L40S because it is a practical, mid-range GPU that is less commonly featured in benchmarks - most published comparisons default to the H100, which may not reflect the hardware teams are actually deploying on. All benchmarks use Nvidia AIPerf for reproducible, standardized measurement.
 
 ---
 
-## TL;DR — Summary and Recommendations
+## TL;DR - Summary and Recommendations
 
-![Engine comparison — normalized performance across key metrics](/images/blog/llm-inference-benchmarks/engine_summary.png)
+![Engine comparison - normalized performance across key metrics](/images/blog/llm-inference-benchmarks/engine_summary.png)
 
 ### Engine Selection Guide
 
@@ -33,11 +33,11 @@ Choosing an inference engine for large language model serving is a decision with
 
 1. **TensorRT-LLM excels at high concurrency and long-context workloads**, but requires more complex deployment (engine compilation, model conversion) and shows higher ITL at high load.
 
-2. **vLLM provides the best low-concurrency latency** and the most accessible deployment experience. Its quantization support makes AWQ/GPTQ models perform 43% better than FP8 — a significant finding for teams using vLLM.
+2. **vLLM provides the best low-concurrency latency** and the most accessible deployment experience. Its quantization support makes AWQ/GPTQ models perform 43% better than FP8 - a significant finding for teams using vLLM.
 
 3. **SGLang delivers the most consistent per-token streaming** with the lowest ITL, making it ideal for interactive applications where typing-speed output matters.
 
-4. **MoE models are a game-changer.** The Qwen3-30B-A3B model running on SGLang outperforms every dense model configuration across all engines — by a wide margin. Teams should evaluate MoE alternatives before scaling GPU infrastructure.
+4. **MoE models are a game-changer.** The Qwen3-30B-A3B model running on SGLang outperforms every dense model configuration across all engines - by a wide margin. Teams should evaluate MoE alternatives before scaling GPU infrastructure.
 
 5. **Quantization format matters more than expected on vLLM.** AWQ and GPTQ outperform FP8 by 43% on throughput, suggesting that 4-bit quantization is the practical default for vLLM deployments.
 
@@ -57,9 +57,9 @@ All experiments run on a single machine with:
 
 ### Required Software
 
-- **CUDA Toolkit 13** — required by FlashInfer, which SGLang depends on
+- **CUDA Toolkit 13** - required by FlashInfer, which SGLang depends on
 - **NVIDIA-SMI with CUDA 13** driver
-- **`python3-dev`** — needed for building native extensions
+- **`python3-dev`** - needed for building native extensions
 
 ### Key Metrics
 
@@ -67,9 +67,9 @@ All experiments run on a single machine with:
 |--------|-------------|
 | **Throughput (req/s)** | Completed requests per second across all concurrent users |
 | **Output Token Throughput (tok/s)** | Total output tokens generated per second |
-| **TTFT avg (ms)** | Time To First Token — measures prefill latency |
-| **TTFT p99 (ms)** | 99th-percentile TTFT — worst-case first-token latency |
-| **ITL avg (ms)** | Inter-Token Latency — average time between consecutive output tokens |
+| **TTFT avg (ms)** | Time To First Token - measures prefill latency |
+| **TTFT p99 (ms)** | 99th-percentile TTFT - worst-case first-token latency |
+| **ITL avg (ms)** | Inter-Token Latency - average time between consecutive output tokens |
 
 ---
 
@@ -77,9 +77,9 @@ All experiments run on a single machine with:
 
 **Config:** Qwen3-32B-FP8, ISL = 1024, OSL = 256, Concurrency = 8 → 32 → 64
 
-This experiment measures how each engine handles increasing concurrent request load — the most common production scaling scenario.
+This experiment measures how each engine handles increasing concurrent request load - the most common production scaling scenario.
 
-![Concurrency scaling — output token throughput](/images/blog/llm-inference-benchmarks/concurrency_throughput.png)
+![Concurrency scaling - output token throughput](/images/blog/llm-inference-benchmarks/concurrency_throughput.png)
 
 | Framework | Concurrency | Throughput (req/s) | Output (tok/s) | TTFT avg (ms) | TTFT p99 (ms) | ITL avg (ms) |
 |-----------|:-----------:|:------------------:|:--------------:|:-------------:|:-------------:|:------------:|
@@ -93,21 +93,21 @@ This experiment measures how each engine handles increasing concurrent request l
 | TensorRT-LLM | 32 | 1.13 | 289.2 | 4,554 | 10,325 | 83.0 |
 | TensorRT-LLM | 64 | 1.34 | 342.1 | 11,738 | 42,304 | 124.4 |
 
-![Concurrency scaling — TTFT](/images/blog/llm-inference-benchmarks/concurrency_ttft.png)
+![Concurrency scaling - TTFT](/images/blog/llm-inference-benchmarks/concurrency_ttft.png)
 
-![Concurrency scaling — ITL](/images/blog/llm-inference-benchmarks/concurrency_itl.png)
+![Concurrency scaling - ITL](/images/blog/llm-inference-benchmarks/concurrency_itl.png)
 
 ### Analysis
 
-**TensorRT-LLM dominates throughput at scale.** At concurrency 64, it delivers **342 tok/s** — a **37% advantage** over vLLM (245 tok/s) and SGLang (250 tok/s). Its throughput continues to increase from c32 to c64, while both vLLM and SGLang plateau.
+**TensorRT-LLM dominates throughput at scale.** At concurrency 64, it delivers **342 tok/s** - a **37% advantage** over vLLM (245 tok/s) and SGLang (250 tok/s). Its throughput continues to increase from c32 to c64, while both vLLM and SGLang plateau.
 
-**vLLM has the best low-concurrency latency.** At c8, vLLM achieves an average TTFT of just **834 ms** — 2.4× faster than SGLang (2,029 ms) and 3× faster than TensorRT-LLM (2,541 ms). This makes vLLM the best choice for low-traffic, latency-sensitive workloads.
+**vLLM has the best low-concurrency latency.** At c8, vLLM achieves an average TTFT of just **834 ms** - 2.4× faster than SGLang (2,029 ms) and 3× faster than TensorRT-LLM (2,541 ms). This makes vLLM the best choice for low-traffic, latency-sensitive workloads.
 
 **SGLang offers the best ITL consistency.** Across all concurrency levels, SGLang maintains the lowest inter-token latency: **60.6 → 76.6 → 77.8 ms**. This translates to the smoothest token streaming experience for end users.
 
-**TensorRT-LLM's TTFT scales most gracefully under load.** At c32, TensorRT-LLM's TTFT is **4,554 ms** — less than half of vLLM's 11,125 ms and SGLang's 12,332 ms. At c64, the gap narrows but TensorRT-LLM still leads at **11,738 ms** vs ~40,500 ms for the other two.
+**TensorRT-LLM's TTFT scales most gracefully under load.** At c32, TensorRT-LLM's TTFT is **4,554 ms** - less than half of vLLM's 11,125 ms and SGLang's 12,332 ms. At c64, the gap narrows but TensorRT-LLM still leads at **11,738 ms** vs ~40,500 ms for the other two.
 
-**All three engines hit a throughput ceiling around c32–c64.** vLLM and SGLang show negligible throughput gain from c32 to c64 (< 1% increase), while TTFT roughly doubles. TensorRT-LLM still extracts meaningful throughput gain at c64 (+18% over c32), but at the cost of significantly higher ITL (124.4 ms).
+**All three engines hit a throughput ceiling around c32-c64.** vLLM and SGLang show negligible throughput gain from c32 to c64 (< 1% increase), while TTFT roughly doubles. TensorRT-LLM still extracts meaningful throughput gain at c64 (+18% over c32), but at the cost of significantly higher ITL (124.4 ms).
 
 ---
 
@@ -117,7 +117,7 @@ This experiment measures how each engine handles increasing concurrent request l
 
 Long-context workloads (document summarization, RAG with large context windows) stress the prefill pipeline disproportionately. This experiment uses an 8× larger input sequence to reveal engine-level differences in attention computation and memory management.
 
-![Long context — throughput and TTFT comparison](/images/blog/llm-inference-benchmarks/long_context.png)
+![Long context - throughput and TTFT comparison](/images/blog/llm-inference-benchmarks/long_context.png)
 
 | Framework | Throughput (req/s) | Output (tok/s) | TTFT avg (ms) | TTFT p99 (ms) | ITL avg (ms) |
 |-----------|:------------------:|:--------------:|:-------------:|:-------------:|:------------:|
@@ -143,7 +143,7 @@ The TTFT gap is the most striking result in this entire benchmark suite: TensorR
 
 This experiment isolates the impact of quantization format by holding the inference engine constant (vLLM) and varying only the model checkpoint: FP8 vs AWQ vs GPTQ.
 
-![Quantization comparison — throughput and TTFT](/images/blog/llm-inference-benchmarks/quantization.png)
+![Quantization comparison - throughput and TTFT](/images/blog/llm-inference-benchmarks/quantization.png)
 
 | Model | Throughput (req/s) | Output (tok/s) | TTFT avg (ms) | TTFT p99 (ms) | ITL avg (ms) |
 |-------|:------------------:|:--------------:|:-------------:|:-------------:|:------------:|
@@ -159,17 +159,17 @@ This experiment isolates the impact of quantization format by holding the infere
 
 **FP8's worse performance on vLLM is notable.** While FP8 preserves more model precision (8-bit vs 4-bit), it uses significantly more memory per parameter, reducing the batch sizes vLLM can maintain at c32. The 4-bit methods leave more VRAM for KV-cache, enabling better batching and pipelining.
 
-**TTFT p99 gap is particularly significant.** FP8's worst-case first-token latency is **25.8s** versus **~11.5s** for AWQ/GPTQ — a 2.2× difference that directly impacts tail latency SLOs.
+**TTFT p99 gap is particularly significant.** FP8's worst-case first-token latency is **25.8s** versus **~11.5s** for AWQ/GPTQ - a 2.2× difference that directly impacts tail latency SLOs.
 
 ---
 
-## Experiment 4: MoE Model — Qwen3-30B-A3B
+## Experiment 4: MoE Model - Qwen3-30B-A3B
 
 **Config:** SGLang, Concurrency = 32, ISL = 1024, OSL = 256
 
 Mixture-of-Experts (MoE) models activate only a subset of parameters per token, promising higher throughput with lower compute. This experiment compares the dense Qwen3-32B-FP8 against the MoE Qwen3-30B-A3B-FP8, both served by SGLang.
 
-![MoE vs Dense — throughput, TTFT, and ITL](/images/blog/llm-inference-benchmarks/moe_comparison.png)
+![MoE vs Dense - throughput, TTFT, and ITL](/images/blog/llm-inference-benchmarks/moe_comparison.png)
 
 | Model | Throughput (req/s) | Output (tok/s) | TTFT avg (ms) | TTFT p99 (ms) | ITL avg (ms) |
 |-------|:------------------:|:--------------:|:-------------:|:-------------:|:------------:|
@@ -185,9 +185,9 @@ Mixture-of-Experts (MoE) models activate only a subset of parameters per token, 
 - **15.8× faster average TTFT** (779 ms vs 12,332 ms)
 - **2.5× lower inter-token latency** (31.1 ms vs 76.6 ms)
 
-These are the largest performance differences observed across all experiments. The MoE architecture fundamentally changes the compute profile — with only 3B active parameters, the model effectively runs like a much smaller dense model while maintaining output quality comparable to the full 32B dense variant.
+These are the largest performance differences observed across all experiments. The MoE architecture fundamentally changes the compute profile - with only 3B active parameters, the model effectively runs like a much smaller dense model while maintaining output quality comparable to the full 32B dense variant.
 
-**Sub-second TTFT at c32 is a standout result.** The MoE model achieves **779 ms average TTFT** even at concurrency 32 — faster than the dense model manages at concurrency 8 with any engine. Combined with a p99 TTFT of just 1,303 ms, this makes the MoE model viable for real-time, latency-sensitive applications at high concurrency.
+**Sub-second TTFT at c32 is a standout result.** The MoE model achieves **779 ms average TTFT** even at concurrency 32 - faster than the dense model manages at concurrency 8 with any engine. Combined with a p99 TTFT of just 1,303 ms, this makes the MoE model viable for real-time, latency-sensitive applications at high concurrency.
 
 ---
 
@@ -202,7 +202,7 @@ python run_sglang.py --model Qwen/Qwen3-32B-FP8 --concurrency 32 \
     --isl 1024 --osl 256 --requests 300
 ```
 
-The raw AIPerf JSON exports are stored in `aiperf-workspace/results/` and contain full statistical distributions (avg, p1–p99, min, max, std) for every metric — far more detail than the summary tables presented here.
+The raw AIPerf JSON exports are stored in `aiperf-workspace/results/` and contain full statistical distributions (avg, p1-p99, min, max, std) for every metric - far more detail than the summary tables presented here.
 
 ### TensorRT-LLM: Workarounds Applied
 
