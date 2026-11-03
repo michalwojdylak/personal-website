@@ -1,0 +1,211 @@
+---
+title: "KV Cache: The Hidden Variable in LLM Inference Benchmarks"
+description: "How much KV cache an inference engine reserves decides how many requests it can run at once, and that often matters more than the engine. Measured on Qwen3-32B with vLLM, SGLang and TensorRT-LLM on a single L40S, with the flags to control it in each engine."
+date: 2026-11-03
+tags: ["llm-inference", "benchmarks", "kv-cache", "vllm", "sglang", "tensorrt-llm"]
+published: true
+author: "Michał Wojdylak"
+# heroImage: "/images/blog/kv-cache-llm-inference-benchmarks/hero.png"
+repo: "https://github.com/michalwojdylak/llm-inference-benchmarks"
+---
+
+# KV Cache: The Hidden Variable in LLM Inference Benchmarks
+
+When you load-test an inference engine, the number that decides the result is often not how fast its kernels are, but how much memory it set aside for the KV cache. The KV cache limits how many requests can generate at the same time. Once it is full, extra requests wait in a queue, throughput stops growing and time to first token turns into waiting time.
+
+Every engine sizes its KV cache differently by default, so two engines started with "the same" memory setting can run very different numbers of requests. This post shows how big the effect is, using measurements from my [vLLM vs SGLang vs TensorRT-LLM benchmark](/blog/llm-inference-benchmarks-vllm-sglang-tensorrt-llm) on Qwen3-32B and a single NVIDIA L40S 48 GB, and how to set and check the KV cache in each engine.
+
+---
+
+## How Big the KV Cache Is
+
+For every token in a request, each attention layer stores a key and a value vector for every KV head. The size per token is:
+
+```
+bytes per token = 2 (K and V) × layers × KV heads × head dim × bytes per element
+```
+
+Qwen3-32B has 64 layers, 8 KV heads and a head dimension of 128, so each token needs 131,072 values:
+
+| | BF16 KV cache | FP8 KV cache |
+|---|:---:|:---:|
+| Per token | 256 KiB | 128 KiB |
+| Request with 1,024 input + 256 output tokens | 320 MiB | 160 MiB |
+| Request with 8,000 input + 512 output tokens | 2.08 GiB | 1.04 GiB |
+
+A single long request needs more than a gigabyte even in FP8. Storing the KV cache in FP8 instead of BF16 halves the memory per token, so the same memory holds twice as many requests. vLLM and SGLang keep the KV cache in the model's compute dtype (BF16 for Qwen3-32B) unless you pass a KV cache dtype, even when serving FP8 weights.
+
+```python
+def kv_bytes_per_token(layers=64, kv_heads=8, head_dim=128, bytes_per_element=1):
+    return 2 * layers * kv_heads * head_dim * bytes_per_element
+
+gib = 35_328 * kv_bytes_per_token() / 2**30
+print(f"{gib:.2f} GiB")  # 4.31 GiB, the figure TensorRT-LLM logs for a 35,328-token cache
+```
+
+## The KV Cache Gets What the Weights Leave
+
+The KV cache takes the memory that is left after the weights, activations and CUDA graphs. On a 48 GB card that makes the weight format a KV cache decision too. These are vLLM's own log lines for three Qwen3-32B checkpoints, all at `--gpu-memory-utilization 0.90` with an FP8 KV cache:
+
+![vLLM memory split by checkpoint - weights vs memory left for KV cache](/images/blog/kv-cache-llm-inference-benchmarks/kv_weights_vs_kv.png)
+
+The FP8 checkpoint's 32.5 GiB of weights leave 4.45 GiB for the KV cache: about 36,000 tokens, or 28 short requests. The 4-bit AWQ and GPTQ checkpoints take about 18 GiB and leave 18.6-18.8 GiB, more than four times as much. Without a cap, a benchmark comparing these checkpoints compares batch sizes as much as quantization formats. With the KV cache capped at the same 35,328 tokens, AWQ and GPTQ were still 1.44-1.49× faster than FP8 in [the benchmark](/blog/llm-inference-benchmarks-vllm-sglang-tensorrt-llm#experiment-3-quantization-comparison), so the format matters on its own too, but the two effects have to be separated to see that.
+
+## Each Engine Reserves a Different Amount
+
+All three engines take a "use 90% of memory" style setting, but the number means something different in each:
+
+- **vLLM** `--gpu-memory-utilization` is the share of the whole GPU the instance may use. Weights, activations and CUDA graphs come out of it first, and the KV cache gets the rest.
+- **SGLang** `--mem-fraction-static` is the share of the GPU for the weights plus the KV cache pool. Activations and CUDA graphs use the memory outside it.
+- **TensorRT-LLM** `free_gpu_memory_fraction` is the share of the memory still free after the engine is loaded that goes to the KV cache.
+
+With the same Qwen3-32B FP8 weights and an FP8 KV cache, each at 0.90, that gives:
+
+![KV cache each engine reserves at a 0.90 memory setting](/images/blog/kv-cache-llm-inference-benchmarks/kv_capacity.png)
+
+TensorRT-LLM reserves twice as much KV cache as vLLM from the same nominal setting. At high concurrency that alone decides how many requests each engine runs, before any difference in kernels shows up. For an engine comparison I capped all three at vLLM's 35,328 tokens. Benchmarking each engine on its own defaults is also a valid question, but it answers "which engine reserves more memory" as much as "which engine is faster".
+
+## Setting and Checking the KV Cache in Each Engine
+
+These are the exact settings used for the equal-budget runs. Each engine also logs the capacity it ended up with; check that line rather than assuming the flag did what you meant.
+
+### vLLM
+
+```bash
+vllm serve Qwen/Qwen3-32B-FP8 \
+    --gpu-memory-utilization 0.90 \
+    --max-model-len 9216 \
+    --max-num-batched-tokens 8192 \
+    --kv-cache-dtype fp8 \
+    --num-gpu-blocks-override 2208    # 2,208 blocks × 16 tokens = 35,328 tokens
+```
+
+vLLM allocates the KV cache in blocks of 16 tokens, so the cap is set in blocks. The log shows both the natural size and the override:
+
+```
+Available KV cache memory: 4.45 GiB
+Overriding num_gpu_blocks=2278 with num_gpu_blocks_override=2208
+GPU KV cache size: 35,328 tokens
+```
+
+The natural block count varies a little between launches (2,208-2,278 blocks here) because vLLM profiles memory at startup, which is another reason to set it explicitly. The `vllm:cache_config_info` metric on `/metrics` reports `num_gpu_blocks` and `cache_dtype`.
+
+### SGLang
+
+```bash
+python -m sglang.launch_server \
+    --model-path Qwen/Qwen3-32B-FP8 \
+    --mem-fraction-static 0.90 \
+    --context-length 9216 \
+    --chunked-prefill-size 8192 \
+    --kv-cache-dtype fp8_e4m3 \
+    --max-total-tokens 35328 \
+    --enable-metrics
+```
+
+SGLang logs the pool it allocated, with the key and value sizes:
+
+```
+KV Cache is allocated. #tokens: 35328, K size: 2.16 GB, V size: 2.16 GB
+max_total_num_tokens=35328, chunked_prefill_size=8192, ...
+```
+
+With `--enable-metrics`, `sglang:max_total_num_tokens` and `sglang:token_usage` show the capacity and how full it is.
+
+### TensorRT-LLM
+
+With the TensorRT backend, the KV cache dtype is part of the engine. It is set when the checkpoint is quantized:
+
+```bash
+python examples/quantization/quantize.py \
+    --model_dir Qwen3-32B --output_dir Qwen3-32B-FP8-checkpoint \
+    --qformat fp8 --kv_cache_dtype fp8 --dtype bfloat16 --tp_size 1 \
+    --calib_size 128 --calib_max_seq_length 512 --batch_size 1
+
+trtllm-build --checkpoint_dir Qwen3-32B-FP8-checkpoint --output_dir Qwen3-32B-FP8-engine \
+    --max_batch_size 64 --max_seq_len 9216 --max_num_tokens 8192 --opt_num_tokens 4096 \
+    --gemm_plugin auto --gpt_attention_plugin auto
+```
+
+The size is set at serve time through `--extra_llm_api_options`:
+
+```yaml
+kv_cache_config:
+  free_gpu_memory_fraction: 0.9
+  max_tokens: 35328
+```
+
+```bash
+trtllm-serve serve Qwen3-32B-FP8-engine --backend tensorrt \
+    --tokenizer Qwen/Qwen3-32B-FP8 --max_batch_size 64 \
+    --extra_llm_api_options kv_cache.yaml
+```
+
+`max_tokens` caps the cache, and when both settings are given the smaller result wins. The log confirms it:
+
+```
+[MemUsageChange] Allocated 4.31 GiB for max tokens in paged KV cache (35328).
+```
+
+---
+
+## What the KV Budget Does to the Results
+
+All three engines below ran with an FP8 KV cache capped at 35,328 tokens, with the same sequence and scheduler limits. Requests had 1,024 input and 256 output tokens unless noted.
+
+### Concurrency stops mattering once the cache is full
+
+35,328 tokens hold 27.6 requests of 1,280 tokens. Counting how many requests were generating at the same moment, every engine levelled off just below that, whether 32 or 64 clients were sending requests:
+
+![Running requests vs concurrency at an equal KV budget](/images/blog/kv-cache-llm-inference-benchmarks/kv_running_requests.png)
+
+None of the engines ever ran more than about 25 requests on average. As a result, going from 32 to 64 concurrent clients added less than 1.5% throughput on every engine, while average TTFT grew 3.7-4.8×. The extra clients only made the queue longer.
+
+### TTFT becomes queue time
+
+vLLM and SGLang export how long each request waited before it was first scheduled. At concurrency 64, waiting for a free slot was most of the time to first token:
+
+![Where TTFT goes - queue wait vs time after scheduling](/images/blog/kv-cache-llm-inference-benchmarks/kv_ttft_split.png)
+
+vLLM spent 27.8 s of its 40.4 s average TTFT in the queue, and SGLang 27.2 s of 34.0 s. A TTFT comparison at this load measures how many requests fit and how the scheduler orders them, not how fast the engine processes a prompt. Reporting TTFT under load without the queue share hides that.
+
+### Long context: the budget can flip the ranking
+
+Long requests make the effect much larger. With 8,000 input and 512 output tokens, a request needs about 8,520 tokens of cache, so 35,328 tokens hold only four of them, and with eight clients the other four always wait.
+
+At that budget SGLang delivered 48.9 tok/s and vLLM 46.0 tok/s, and TensorRT-LLM was slowest at 25.1 tok/s. Then I ran TensorRT-LLM again with nothing changed except the KV cache, raised to the 71,552 tokens it reserves by default:
+
+![TensorRT-LLM long context with the shared budget vs its full KV cache](/images/blog/kv-cache-llm-inference-benchmarks/kv_trt_long_context.png)
+
+With room for all eight requests, the same engine went from 25.1 to 81.8 tok/s, and its average TTFT dropped from 82.4 s to 5.0 s. It went from the slowest engine to the fastest one in this test. Part of the jump is that TensorRT-LLM decoded long sequences unusually slowly when only a few were running (145 ms per step for four sequences, 69 ms for eight), which I could not explain. But the change was triggered by the KV budget alone. The full-cache run is shorter than the others (24 measured requests), so treat its numbers as approximate.
+
+---
+
+## A Checklist for Benchmarking Inference Engines
+
+1. **Set the KV cache dtype explicitly** on every engine. Defaults differ, and BF16 against FP8 is a 2× difference in capacity.
+2. **Record the KV capacity each engine actually allocated**, from its log or metrics, next to the results.
+3. **Decide whether you compare engines or deployments.** For engines, cap every engine at the same token budget. For out-of-the-box deployments, use defaults but report the capacity each one chose.
+4. **Report how many requests were running and how long they queued**, not only throughput and TTFT. AIPerf's per-request export is enough to count running requests:
+
+```python
+import json
+
+def running_requests(path="profile_export.jsonl"):
+    """Average number of requests generating tokens at once over an AIPerf run."""
+    spans = []
+    for line in open(path):
+        record = json.loads(line)
+        meta, metrics = record["metadata"], record["metrics"]
+        if meta.get("benchmark_phase") != "profiling" or "time_to_first_token" not in metrics:
+            continue
+        first_token_ns = meta["request_start_ns"] + metrics["time_to_first_token"]["value"] * 1e6
+        spans.append((first_token_ns, meta["request_end_ns"]))
+    start, end = min(s for s, _ in spans), max(e for _, e in spans)
+    return sum(e - s for s, e in spans) / (end - start)
+```
+
+5. **Watch evictions.** When the cache runs out, vLLM preempts running requests and recomputes them later (`vllm:num_preemptions_total`), and SGLang retracts them (`sglang:num_retracted_requests_total`). With the same 35,328-token cap, vLLM preempted 56-67 requests per run at concurrency 32 and 64, and SGLang retracted 7.
+6. **Cap the budget when comparing quantized checkpoints,** or the smaller weights will win partly by running a bigger batch.
+
+The scripts used for these runs, including the driver that starts each engine with the same KV budget and saves its log and metrics with every result, are in the [`equal-kv-budget/` folder](https://github.com/michalwojdylak/llm-inference-benchmarks/tree/main/equal-kv-budget) of the benchmark repository.
