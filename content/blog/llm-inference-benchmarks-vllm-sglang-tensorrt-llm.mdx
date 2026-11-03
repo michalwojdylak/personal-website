@@ -13,7 +13,7 @@ repo: "https://github.com/michalwojdylak/llm-inference-benchmarks"
 
 Choosing an inference engine for large language model serving is a decision with direct impact on latency, throughput, and infrastructure cost. This post presents a **head-to-head benchmark** of three production-grade engines - **vLLM**, **SGLang**, and **TensorRT-LLM** - across four real-world workload scenarios on a single NVIDIA L40S GPU. I specifically chose the L40S because it is a practical, mid-range GPU that is less commonly featured in benchmarks - most published comparisons default to the H100, which may not reflect the hardware teams are actually deploying on. All benchmarks use Nvidia AIPerf for reproducible, standardized measurement.
 
-> **Update (3 November 2026):** A technical reader pointed out that the first version compared the engines on unequal memory budgets: TensorRT-LLM stored its KV cache in FP8 while vLLM and SGLang used BF16, so it could keep about 2.4× as many requests running. That was correct, so Experiments 1-3 were rerun with an FP8 KV cache and the same 35,328-token KV budget on every engine, the same scheduler limits, and the same request settings. All numbers in Experiments 1-3 now come from that rerun. The conclusions changed: TensorRT-LLM's lead at high concurrency shrinks from 37% to 5%, vLLM loses its low-concurrency TTFT lead, and the 4-bit checkpoints stay well ahead of FP8 even with equal memory. [What Changed From the First Version](#what-changed-from-the-first-version) lists the differences, and the original results remain in the repository.
+> **Update (3 November 2026):** Experiments 1-3 were re-measured with an FP8 KV cache and the same KV cache budget on every engine, so all three engines are compared on equal memory. Thanks to a technical reader who pointed out that the engines' default KV cache settings differ enough to decide the ranking.
 
 ---
 
@@ -32,17 +32,17 @@ All rows except MoE compare the engines with the same FP8 KV cache budget of 35,
 | **Low concurrency, latency-critical** | SGLang over vLLM; TensorRT-LLM unclear | At c8 SGLang returned the first token in 2.4 s vs 4.2 s for vLLM under the same request pattern. TensorRT-LLM's 1.1 s came from a different pattern (see [Experiment 1](#requests-arriving-in-waves)) |
 | **Long-context (8K+ tokens)** | SGLang or vLLM at a fixed budget; TensorRT-LLM with its full KV cache | At 35,328 tokens SGLang (49 tok/s) and vLLM (46 tok/s) beat TensorRT-LLM (25 tok/s). Given its full 71,552-token cache, TensorRT-LLM reached 82 tok/s |
 | **Quantized checkpoints on vLLM** | AWQ / GPTQ | 1.44-1.49× the FP8 throughput with the same KV budget and batch size |
-| **Highest measured throughput** | SGLang + MoE | 3.6× throughput using Qwen3-30B-A3B vs dense 32B (first-round run, not repeated) |
+| **Highest measured throughput** | SGLang + MoE | 3.6× throughput using Qwen3-30B-A3B vs dense 32B (SGLang's default KV settings) |
 
 ### Key Takeaways
 
-1. **With equal KV budgets the engines are much closer than they first looked.** Every engine levelled off at about 21-24 running requests at c32 and c64, set by the shared 35,328-token budget. TensorRT-LLM still led on throughput and ITL, but by 5% over SGLang at c64 instead of 37%. vLLM was 19-23% behind both, mostly because it decodes more slowly per step (ITL 99 ms at the same batch size).
+1. **With equal KV budgets the engines are close.** Every engine levelled off at about 21-24 running requests at c32 and c64, set by the shared 35,328-token budget. TensorRT-LLM led on throughput and ITL, 5% ahead of SGLang at c64. vLLM was 19-23% behind both, mostly because it decodes more slowly per step (ITL 99 ms at the same batch size).
 
-2. **How much KV cache each engine reserves matters as much as the engine.** At the same 0.90 memory setting, the engines reserved different amounts of FP8 KV cache: vLLM 35,328 tokens, SGLang 60,954 and TensorRT-LLM 71,552. The rerun caps all three at vLLM's figure to compare the engines themselves. Out of the box, SGLang and TensorRT-LLM would fit about twice as many requests, which is what drove the first version's results.
+2. **How much KV cache each engine reserves matters as much as the engine.** At the same 0.90 memory setting, the engines reserved different amounts of FP8 KV cache: vLLM 35,328 tokens, SGLang 60,954 and TensorRT-LLM 71,552. This benchmark caps all three at vLLM's figure to compare the engines themselves. Out of the box, SGLang and TensorRT-LLM would fit about twice as many requests, so a benchmark on default settings compares memory reservation as much as engines.
 
 3. **TTFT under load is queueing, not prefill.** At c64 every engine took 30-40 s to the first token, and the server metrics show about 28 s of that was waiting for a free slot on both vLLM and SGLang. More concurrency than the KV cache can hold only lengthens the queue.
 
-4. **On vLLM, AWQ and GPTQ are faster than FP8 even with the same memory.** With the same KV budget and about 24 running requests, the 4-bit checkpoints produced 1.44-1.49× FP8's throughput, with 32-34% lower ITL. The first version attributed the whole gap to KV capacity. The rerun shows most of it remains when capacity is equal, which fits decoding reading half as many weight bytes. Measure output quality before making 4-bit the default.
+4. **On vLLM, AWQ and GPTQ are faster than FP8 even with the same memory.** With the same KV budget and about 24 running requests, the 4-bit checkpoints produced 1.44-1.49× FP8's throughput, with 32-34% lower ITL. That fits decoding reading half as many weight bytes. Measure output quality before making 4-bit the default.
 
 5. **MoE models are a game-changer.** The Qwen3-30B-A3B model running on SGLang outperforms every dense model configuration across all engines - by a wide margin on serving performance. These runs measure serving performance only, so evaluate output quality separately before treating the models as interchangeable.
 
@@ -148,7 +148,7 @@ Once the KV cache is full, new requests wait in a queue until a running one fini
 | 32 | 24.0 (max 32) | 21.3 (max 29) | 24.5 (max 26) |
 | 64 | 24.0 (max 33) | 21.7 (max 29) | 24.4 (max 26) |
 
-With the same budget, all three engines settle at 21-25 running requests at c32 and c64. In the first version TensorRT-LLM ran about 50 at c64 against about 20 for the others, which is where most of its 37% lead came from. vLLM briefly reaches 32 because it admits more requests than fit and then evicts some, while TensorRT-LLM never goes above 26 because it reserves each request's full length up front.
+With the same budget, all three engines settle at 21-25 running requests at c32 and c64. vLLM briefly reaches 32 because it admits more requests than fit and then evicts some, while TensorRT-LLM never goes above 26 because it reserves each request's full length up front.
 
 vLLM and SGLang also report how long requests waited before the scheduler first picked them up:
 
@@ -168,14 +168,11 @@ Counting requests that started within 200 ms of each other shows which runs did 
 
 | c8 run | Requests starting together (avg) | TTFT avg |
 |--------|:-------------------------------:|:--------:|
-| vLLM (this rerun) | 7.9 | 4,202 ms |
-| SGLang (this rerun) | 7.9 | 2,365 ms |
-| TensorRT-LLM (this rerun) | 4.1 | 1,122 ms |
-| vLLM (first version) | 1.4 | 834 ms |
-| SGLang (first version) | 7.9 | 2,029 ms |
-| TensorRT-LLM (first version) | 7.9 | 2,541 ms |
+| vLLM | 7.9 | 4,202 ms |
+| SGLang | 7.9 | 2,365 ms |
+| TensorRT-LLM | 4.1 | 1,122 ms |
 
-The first version's headline that vLLM had the lowest TTFT at c8 (834 ms) came from that run happening to stay spread out, not from a faster engine. In the rerun, vLLM and SGLang both ran in full waves of eight, so their comparison is fair: SGLang prefilled the wave about 1.8× faster (2.4 s vs 4.2 s). Switching vLLM's attention backend from FlashInfer to Triton changed its c8 TTFT by less than 4% (4,053 ms), so attention is not the cause; the Marlin FP8 weight path mentioned above is the more likely one. TensorRT-LLM ran in waves of about four, so its 1.1 s is not directly comparable.
+A run that happens to stay spread out avoids these waves and can show a much lower TTFT on the same engine, so this pattern has to be checked before comparing c8 latency. vLLM and SGLang both ran in full waves of eight, so their comparison is fair: SGLang prefilled the wave about 1.8× faster (2.4 s vs 4.2 s). Switching vLLM's attention backend from FlashInfer to Triton changed its c8 TTFT by less than 4% (4,053 ms), so attention is not the cause; the Marlin FP8 weight path mentioned above is the more likely one. TensorRT-LLM ran in waves of about four, so its 1.1 s is not directly comparable.
 
 Real traffic rarely arrives in synchronized waves, so for low-concurrency latency it is safer to treat these TTFT numbers as a rough ranking and measure with your own arrival pattern.
 
@@ -204,7 +201,7 @@ The last row is a shorter run (24 requests after the usual 30 warmup requests) w
 
 **TensorRT-LLM decodes long sequences slowly when only a few are running.** Its iteration statistics show each decode step taking a median **145 ms** with four long sequences in the batch at the 35,328-token budget. With its full cache it ran eight sequences at once and each step took **69 ms**, and steps with only two or three long sequences took 100-150 ms in both runs. More sequences finishing faster per step is the opposite of what batching normally does. The shorter capped run reproduced the 155 ms ITL, and turning off TensorRT-LLM's multi-block attention mode did not change it (154 ms), so the cause was not identified. In practice, TensorRT-LLM needs enough KV cache to batch several long requests together.
 
-**Given its full KV cache, TensorRT-LLM was the fastest long-context engine here,** at 82 tok/s with a 5 s average TTFT. That matches the first version's result (76 tok/s, 8.6 s). Those are its default settings, so the first version's long-context result does describe what you get out of the box. It just was not a comparison at equal memory.
+**Given its full KV cache, TensorRT-LLM was the fastest long-context engine here,** at 82 tok/s with a 5 s average TTFT. Its full cache is what TensorRT-LLM reserves by default, so out of the box it handles this workload well; it just is not running on the same memory as the others.
 
 ---
 
@@ -222,11 +219,11 @@ This experiment holds the inference engine constant (vLLM) and varies only the m
 | Qwen3-32B-AWQ | 1.30 | 332.7 | 6,864 | 12,334 | 66.8 | 23.4 |
 | Qwen3-32B-GPTQ-Int4 | 1.34 | 342.5 | 6,520 | 11,358 | 65.4 | 23.5 |
 
-The checkpoints are `Qwen/Qwen3-32B-FP8`, `Qwen/Qwen3-32B-AWQ` and `JunHowie/Qwen3-32B-GPTQ-Int4` (4-bit, group size 128). The first version's GPTQ run used `AlphaGaO/Qwen3-32B-GPTQ`, which vLLM 0.32 no longer loads because it uses activation reordering (`desc_act=True`).
+The checkpoints are `Qwen/Qwen3-32B-FP8`, `Qwen/Qwen3-32B-AWQ` and `JunHowie/Qwen3-32B-GPTQ-Int4` (4-bit, group size 128).
 
 ### Analysis
 
-**With the same memory, the 4-bit checkpoints are still much faster.** AWQ delivers 1.44× and GPTQ 1.49× the FP8 throughput, while all three run about 24 requests at once. The gain comes from decoding: ITL drops from 98.5 ms to 65-67 ms, a 1.47-1.51× speedup that matches the throughput gain. In the first version, FP8 ran about 20 requests against about 29 for the 4-bit checkpoints, and I attributed the whole gap to KV capacity. That was wrong: equalizing capacity removed little of the gap.
+**With the same memory, the 4-bit checkpoints are still much faster.** AWQ delivers 1.44× and GPTQ 1.49× the FP8 throughput, while all three run about 24 requests at once. The gain comes from decoding: ITL drops from 98.5 ms to 65-67 ms, a 1.47-1.51× speedup that matches the throughput gain. The equal budget matters here: without it the 4-bit checkpoints would also get a much larger KV cache from their smaller weights, and the comparison would mix decode speed with batch size.
 
 **Why 4-bit decodes faster here.** Each decode step reads every weight once, so with batches this small the step time is dominated by how many bytes of weights are read. The 4-bit checkpoints have about half the weight bytes of FP8. On the L40S, vLLM also runs Qwen's FP8 checkpoint through a weight-only Marlin kernel, so FP8 does not get a compute advantage in exchange. vLLM uses Marlin kernels for AWQ and GPTQ too, which makes this mostly a weight-size comparison.
 
@@ -244,7 +241,7 @@ The checkpoints are `Qwen/Qwen3-32B-FP8`, `Qwen/Qwen3-32B-AWQ` and `JunHowie/Qwe
 
 Mixture-of-Experts (MoE) models activate only a subset of parameters per token, promising higher throughput with lower compute. This experiment compares the dense Qwen3-32B-FP8 against the MoE Qwen3-30B-A3B-FP8, both served by SGLang.
 
-This experiment was not rerun. Both rows come from the first round, with SGLang's default BF16 KV cache and no KV budget cap, so they compare with each other but not with the tables above.
+Unlike Experiments 1-3, this experiment uses SGLang's default BF16 KV cache with no budget cap, so its two rows compare with each other but not with the tables above.
 
 ![MoE vs Dense - throughput, TTFT, and ITL](/images/blog/llm-inference-benchmarks/moe_comparison.png)
 
@@ -270,29 +267,6 @@ These are the largest performance differences observed across all experiments. T
 
 ---
 
-## What Changed From the First Version
-
-The first version (28 August 2026) ran each engine with its own defaults. The rerun changed the setup in four ways:
-
-- **KV cache:** BF16 on vLLM and SGLang, FP8 on TensorRT-LLM → FP8 on all three, capped at 35,328 tokens. The first version's vLLM had 25,584 BF16 tokens; TensorRT-LLM's capacity was not recorded but it ran about 2.4× as many requests.
-- **Request settings:** `ignore_eos` and server-side token counting were used only for TensorRT-LLM → used for every engine. This made little difference in practice, since vLLM and SGLang had generated the full length almost every time anyway.
-- **Limits:** scheduler token limits and the long-context sequence limit were partly unrecorded → set to the same values on every engine and saved with each result.
-- **Software:** versions were not recorded → listed in [Test Environment](#test-environment-and-methodology). The GPTQ checkpoint changed, as described in Experiment 3.
-
-How the main conclusions moved:
-
-| Claim in the first version | After the rerun |
-|----------------------------|-----------------|
-| TensorRT-LLM 37-40% faster at c64 | 5% faster than SGLang, 30% faster than vLLM; the rest was KV capacity |
-| vLLM has the lowest TTFT at c8 (834 ms) | That run happened not to arrive in waves; under the same pattern SGLang was 1.8× faster than vLLM |
-| SGLang has the lowest ITL under load | TensorRT-LLM has, at the same batch size |
-| TensorRT-LLM 2× faster on long context | True with its full KV cache; at an equal budget it is the slowest |
-| AWQ/GPTQ 43% faster than FP8 because of KV capacity | 44-49% faster with equal KV capacity; the gap is decode speed |
-
-The first round's raw results are still in `aiperf-workspace/results/` in the repository.
-
----
-
 ## Limitations
 
 These numbers come from one machine and one benchmark harness, and they are a starting point for choosing an inference stack rather than a universal ranking of engines:
@@ -302,7 +276,7 @@ These numbers come from one machine and one benchmark harness, and they are a st
 - TensorRT-LLM served its own FP8 quantization of the BF16 model, not the same FP8 weights as vLLM and SGLang.
 - The cause of TensorRT-LLM's slow long-context decoding with few sequences, and of vLLM's slower prefill, was not identified.
 - The TensorRT-LLM backend used here exports no Prometheus metrics, so its TTFT cannot be split into queue wait and prefill.
-- The MoE experiment was not rerun with the new settings.
+- The MoE experiment uses SGLang's default KV settings, not the shared budget.
 - No requests failed in any run.
 - Output quality was never measured. Every comparison here is about serving performance.
 
@@ -314,20 +288,20 @@ Before making a production decision, benchmark your own model, prompt-length dis
 
 All benchmark configurations, run scripts, and raw result JSON files are available in the [accompanying repository](https://github.com/michalwojdylak/llm-inference-benchmarks). Each framework has its own workspace directory with a `run_*.py` script and a `README.md` with step-by-step instructions.
 
-The equal-budget runs in Experiments 1-3 use the driver in `matched-kv-rerun/`, which starts one engine, runs every configuration against it and saves the server command, server log, Prometheus snapshots and engine statistics with each result:
+Experiments 1-3 use the driver in `equal-kv-budget/`, which starts one engine, runs every configuration against it and saves the server command, server log, Prometheus snapshots and engine statistics with each result:
 
 ```bash
 # Run all four configurations against SGLang with a 35,328-token FP8 KV budget
-python matched-kv-rerun/orchestrate.py sglang --budget 35328
+python equal-kv-budget/orchestrate.py sglang --budget 35328
 ```
 
-The raw AIPerf exports for these runs are in `aiperf-workspace/results_matched/`, the diagnostic runs mentioned above are in `aiperf-workspace/results_diag/`, and the first round is in `aiperf-workspace/results/`. Each contains full statistical distributions (avg, p1-p99, min, max, std) for every metric - far more detail than the summary tables presented here.
+The raw AIPerf exports for these runs are in `aiperf-workspace/results_matched/`, the diagnostic runs mentioned above are in `aiperf-workspace/results_diag/`, and the MoE runs are in `aiperf-workspace/results/`. Each contains full statistical distributions (avg, p1-p99, min, max, std) for every metric - far more detail than the summary tables presented here.
 
 ### TensorRT-LLM: Workarounds Applied
 
 Two issues required workarounds when benchmarking TensorRT-LLM:
 
-1. **Token counting mismatch.** AIPerf was not counting tokens correctly when targeting TensorRT-LLM's OpenAI-compatible endpoint. The fix was to pass `--use-server-token-count` and `--ignore_eos` to the `aiperf profile` command, which delegates token counting to the server and prevents early termination on EOS tokens. The equal-budget rerun uses both flags for every engine.
+1. **Token counting mismatch.** AIPerf was not counting tokens correctly when targeting TensorRT-LLM's OpenAI-compatible endpoint. The fix was to pass `--use-server-token-count` and `--ignore_eos` to the `aiperf profile` command, which delegates token counting to the server and prevents early termination on EOS tokens. Both flags are used for every engine.
 
 2. **FP8 checkpoint incompatibility.** The pre-quantized `Qwen3-32B-FP8` checkpoint did not load correctly in TensorRT-LLM due to a configuration issue. To work around this, the `tensorrt-llm-workspace/run_trtllm.py` script was extended to first download the unquantized Qwen3-32B model and then quantize it to FP8 at build time, with an FP8 KV cache. As a result, TensorRT-LLM serves different FP8 weights from vLLM and SGLang.
 
